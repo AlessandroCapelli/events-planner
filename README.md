@@ -12,12 +12,15 @@ Web app minimale per organizzare gli eventi di un gruppo: chi c'è, chi forse, c
 |                 |                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Accesso         | Gli account li crea solo l'admin: non c'è registrazione pubblica.                                                                         |
-| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio. Un evento sparisce 12 ore dopo l'inizio.                         |
+| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio.                                                                  |
+| Archivio        | 12 ore dopo l'inizio un evento è concluso: resta in lista sotto i futuri, in sola lettura (solo un admin può eliminarlo).                 |
+| Tempo reale     | Risposte, voti, proposte e cose da portare si aggiornano da sole, senza perdere quello che si sta scrivendo.                              |
+| Condividi       | Anteprima dell'evento e invio via WhatsApp, Telegram, email o condivisione di sistema; link da copiare.                                   |
 | Presenza        | _Ci sono / Forse / Non ci sono_, più il numero di accompagnatori.                                                                         |
 | Proposte        | Data e/o luogo alternativi con voto 👍/👎. Il creatore o un admin può adottarne una: l'evento si aggiorna e le risposte vengono azzerate. |
 | Cose da portare | Lista condivisa; ognuno prenota quello che porta.                                                                                         |
 | Calendario      | Export `.ics` come evento di un giorno intero, con l'orario nella descrizione.                                                            |
-| Permessi        | Un evento lo modificano o eliminano solo il suo creatore e gli admin.                                                                     |
+| Permessi        | Un evento aperto lo modificano o eliminano solo il suo creatore e gli admin.                                                              |
 | Admin           | Crea ed elimina utenti, reimposta password, assegna il ruolo admin.                                                                       |
 
 ## Struttura

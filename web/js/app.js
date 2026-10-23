@@ -6,7 +6,9 @@ import {
 	fmtTime,
 	groupLabel,
 	isLive,
+	isPast,
 	lang,
+	openSince,
 	relative,
 	setLang,
 	t,
@@ -30,6 +32,7 @@ const nav = document.getElementById("nav");
 const STATUSES = ["yes", "maybe", "no"];
 const STATUS_ICON = { yes: "check", maybe: "help", no: "x" };
 const MAX_GUESTS = 20;
+const PAST_PAGE = 20;
 const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
 const NOT_BLANK = ".*\\S.*";
 
@@ -37,40 +40,91 @@ const NOT_BLANK = ".*\\S.*";
 let me = null;
 /** Contatore di navigazione: scarta le viste caricate dopo che l'utente ha già cambiato pagina. */
 let seq = 0;
+/** Quanti eventi conclusi mostrare in lista ("Mostra eventi più vecchi" ne aggiunge altri). */
+let pastLimit = PAST_PAGE;
+/** Chiude l'iscrizione in tempo reale della pagina corrente. */
+let stopLive = () => {};
 
+// `live` elenca le tabelle da osservare ([tabella, filtro?]) per aggiornare la pagina in tempo reale.
 const routes = [
-	[/^\/$/, viewEvents],
-	[/^\/new$/, () => viewEventForm()],
-	[new RegExp(`^/event/${UUID}$`), viewEvent],
-	[new RegExp(`^/event/${UUID}/edit$`), viewEventForm],
-	[/^\/account$/, viewAccount],
-	[/^\/admin$/, viewAdmin],
+	{
+		path: /^\/$/,
+		view: viewEvents,
+		live: () => [["events"], ["responses"], ["profiles"]],
+	},
+	{ path: /^\/new$/, view: () => viewEventForm() },
+	{
+		path: new RegExp(`^/event/${UUID}$`),
+		view: viewEvent,
+		live: (id) => [
+			["events", `id=eq.${id}`],
+			["responses", `event_id=eq.${id}`],
+			["proposals", `event_id=eq.${id}`],
+			["items", `event_id=eq.${id}`],
+			["votes"],
+			["profiles"],
+		],
+	},
+	{ path: new RegExp(`^/event/${UUID}/edit$`), view: viewEventForm },
+	{ path: /^\/account$/, view: viewAccount },
+	{ path: /^\/admin$/, view: viewAdmin },
 ];
 
-async function show(view, ...args) {
+/**
+ * Esegue una vista e ne monta il risultato, se nel frattempo non si è cambiata pagina.
+ * Con `quiet` (aggiornamenti in background) un errore lascia la pagina com'è invece di sostituirla.
+ */
+async function show(view, args = [], { quiet = false } = {}) {
 	const current = ++seq;
 	let result;
 	try {
 		result = await view(...args);
 	} catch (err) {
+		if (quiet) return;
 		result = [errorState(err.message)];
 	}
 	if (current === seq && result) mount(app, ...result);
 }
 
+/** Aggiorna la pagina quando cambiano le tabelle osservate, quando la scheda torna visibile e dopo una riconnessione. */
+function goLive(bindings, refresh) {
+	let timer;
+	// Un'azione tocca spesso più righe (es. adottare una proposta): un solo refresh per raffica.
+	const schedule = () => {
+		clearTimeout(timer);
+		timer = setTimeout(refresh, 250);
+	};
+	const onVisible = () =>
+		document.visibilityState === "visible" && schedule();
+	const unsubscribe = api.subscribe(bindings, schedule);
+	document.addEventListener("visibilitychange", onVisible);
+	stopLive = () => {
+		clearTimeout(timer);
+		unsubscribe();
+		document.removeEventListener("visibilitychange", onVisible);
+		stopLive = () => {};
+	};
+}
+
 async function render() {
+	stopLive();
 	if (!api.configured)
 		return void mount(app, errorState(t("common.missingConfig")));
 	renderNav();
 	if (!me) return show(viewLogin);
 
 	const path = location.hash.slice(1) || "/";
-	const route = routes.find(([re]) => re.test(path));
+	const route = routes.find((r) => r.path.test(path));
 	if (!route) return void (location.hash = "#/");
+	const args = path.match(route.path).slice(1);
 
 	app.innerHTML = skeleton();
 	window.scrollTo(0, 0);
-	await show(route[1], ...path.match(route[0]).slice(1));
+	if (route.live)
+		goLive(route.live(...args), () =>
+			show(route.view, args, { quiet: true }),
+		);
+	await show(route.view, args);
 }
 
 function renderNav() {
@@ -231,6 +285,8 @@ const deleteButton = (action, id, name) =>
 		${icon("trash")}
 	</button>`;
 
+const eventUrl = (id) => `${location.origin}${location.pathname}#/event/${id}`;
+
 /** Evento "tutto il giorno": l'orario, che si perderebbe, va in testa alla descrizione. */
 function toIcs(event) {
 	const day = (date) => toInput(date).slice(0, 10).replaceAll("-", "");
@@ -274,6 +330,109 @@ const slug = (value) =>
 		.replace(/[^\w]+/g, "-")
 		.replace(/^-|-$/g, "")
 		.toLowerCase() || "event";
+
+/** Finestra di condivisione: anteprima, app di messaggistica, condivisione di sistema e link da copiare. */
+function shareEvent(event) {
+	const url = eventUrl(event.id);
+	const summary = [
+		`📅 ${event.title}`,
+		`🕗 ${fmtLongDate(event.starts_at)}, ${fmtTime(event.starts_at)}`,
+		event.location && `📍 ${event.location}`,
+	]
+		.filter(Boolean)
+		.join("\n");
+	const message = `${summary}\n\n${t("share.reply")} ${url}`;
+	const enc = encodeURIComponent;
+	const targets = [
+		{
+			id: "whatsapp",
+			label: "WhatsApp",
+			icon: "message",
+			href: `https://wa.me/?text=${enc(message)}`,
+		},
+		{
+			id: "telegram",
+			label: "Telegram",
+			icon: "send",
+			href: `https://t.me/share/url?url=${enc(url)}&text=${enc(summary)}`,
+		},
+		{
+			id: "email",
+			label: t("share.email"),
+			icon: "mail",
+			href: `mailto:?subject=${enc(event.title)}&body=${enc(message)}`,
+		},
+	];
+
+	return ask({
+		title: t("share.title"),
+		message: t("share.subtitle"),
+		body: html`<div class="share-preview">
+				${dateTile(event.starts_at, "date-tile-sm")}
+				<div class="grow">
+					<strong class="truncate">${event.title}</strong>
+					<div class="muted small truncate">
+						${fmtLongDate(event.starts_at)},
+						${fmtTime(event.starts_at)}
+					</div>
+					${event.location &&
+					html`<div class="muted small truncate">
+						${event.location}
+					</div>`}
+				</div>
+			</div>
+			<div class="share-targets">
+				${targets.map(
+					(target) =>
+						html`<a
+							class="share-target ${target.id}"
+							href="${target.href}"
+							${target.id !== "email" &&
+							html`target="_blank" rel="noopener"`}
+						>
+							<span class="share-icon">${icon(target.icon)}</span
+							>${target.label}
+						</a>`,
+				)}
+				${"share" in navigator &&
+				html`<button
+					type="button"
+					class="share-target"
+					data-handler="native"
+				>
+					<span class="share-icon">${icon("more")}</span>${t(
+						"share.more",
+					)}
+				</button>`}
+			</div>
+			<div class="input-group">
+				<input
+					value="${url}"
+					readonly
+					aria-label="${t("share.link")}"
+				/>
+				<button type="button" class="btn" data-copy="${url}">
+					${icon("copy")}<span>${t("share.copy")}</span>
+				</button>
+			</div>`,
+		confirm: t("common.close"),
+		cancel: null,
+		handlers: {
+			native: async (_, dialog) => {
+				try {
+					await navigator.share({
+						title: event.title,
+						text: summary,
+						url,
+					});
+					dialog.close();
+				} catch {
+					// Condivisione annullata dall'utente: la finestra resta aperta.
+				}
+			},
+		},
+	});
+}
 
 // ── Viste ────────────────────────────────────────────────────────────────
 // Ogni vista restituisce [markup, actions] da montare, oppure undefined se ha già rediretto.
@@ -336,58 +495,89 @@ function viewLogin() {
 }
 
 async function viewEvents() {
-	const events = await api.listEvents();
+	const since = openSince();
+	const [upcoming, past] = await Promise.all([
+		api.listUpcoming(since),
+		api.listPast(since, pastLimit + 1),
+	]);
+	const hasMore = past.length > pastLimit;
+
+	// Gruppi consecutivi per intestazione: se l'ultimo futuro e il primo concluso cadono nello
+	// stesso mese finiscono nello stesso gruppo (le card concluse si distinguono dallo stile).
 	const groups = [];
-	for (const event of events) {
+	for (const event of [...upcoming, ...past.slice(0, pastLimit)]) {
 		const label = groupLabel(event.starts_at);
 		if (groups.at(-1)?.label !== label) groups.push({ label, events: [] });
 		groups.at(-1).events.push(event);
 	}
 
 	return [
-		html`<div class="page-narrow">${pageHead(
-			t("events.title"),
-			events.length
-				? tn("events.count", events.length)
-				: t("events.subtitle"),
-			html`<a
-				class="btn btn-primary fab"
-				href="#/new"
-				aria-label="${t("events.new")}"
-				>${icon("plus")}<span>${t("events.new")}</span></a
-			>`,
-		)}
-		<div>
-			${events.length
-				? groups.map(
-						(g) =>
-							html`<section class="day-group">
-								<h2 class="group-label">${g.label}</h2>
-								<ul class="event-list">
-									${g.events.map(eventCard)}
-								</ul>
-							</section>`,
-					)
-				: emptyState(
-						"calendar",
-						t("events.emptyTitle"),
-						t("events.empty"),
-						html`<a class="btn btn-primary" href="#/new"
-							>${icon("plus")}${t("events.new")}</a
-						>`,
-					)}
-		</div></div>`,
+		html`<div class="page-narrow">
+			${pageHead(
+				t("events.title"),
+				upcoming.length
+					? tn("events.count", upcoming.length)
+					: t("events.subtitle"),
+				html`<a
+					class="btn btn-primary fab"
+					href="#/new"
+					aria-label="${t("events.new")}"
+					>${icon("plus")}<span>${t("events.new")}</span></a
+				>`,
+			)}
+			<div>
+				${!upcoming.length &&
+				emptyState(
+					"calendar",
+					t("events.emptyTitle"),
+					t("events.empty"),
+					html`<a class="btn btn-primary" href="#/new"
+						>${icon("plus")}${t("events.new")}</a
+					>`,
+				)}
+				${groups.map(
+					(g) =>
+						html`<section class="day-group">
+							<h2 class="group-label">${g.label}</h2>
+							<ul class="event-list">
+								${g.events.map(eventCard)}
+							</ul>
+						</section>`,
+				)}
+				${hasMore &&
+				html`<button
+					class="btn btn-ghost btn-block more"
+					data-action="more"
+				>
+					${t("events.more")}
+				</button>`}
+			</div>
+		</div>`,
+		{
+			more: () => {
+				pastLimit += PAST_PAGE;
+				return show(viewEvents);
+			},
+		},
 	];
 }
 
 function eventCard(event) {
+	const past = isPast(event.starts_at);
 	const mine = event.responses.find((r) => r.user_id === me.id);
 	const going = event.responses
 		.filter((r) => r.status === "yes")
 		.sort(byName);
 	const count = tally(event.responses);
+	const attendance = past
+		? count.yes
+			? tn("people.went", count.yes)
+			: t("people.nobodyWent")
+		: count.yes
+			? tn("people.going", count.yes)
+			: t("people.nobody");
 	return html`<li>
-		<a class="card event-card" href="#/event/${event.id}">
+		<a class="card event-card ${past && "past"}" href="#/event/${event.id}">
 			${dateTile(event.starts_at)}
 			<div class="event-card-body">
 				<h3>${event.title}</h3>
@@ -407,16 +597,14 @@ function eventCard(event) {
 				</div>
 				<div class="event-card-foot">
 					${going.length > 0 && avatarStack(going)}
-					<span class="muted small"
-						>${count.yes
-							? tn("people.going", count.yes)
-							: t("people.nobody")}</span
-					>
+					<span class="muted small">${attendance}</span>
 					${mine
 						? statusPill(mine.status)
-						: html`<span class="pill pending"
-								>${t("rsvp.none")}</span
-							>`}
+						: past
+							? html`<span class="pill">${t("date.past")}</span>`
+							: html`<span class="pill pending"
+									>${t("rsvp.none")}</span
+								>`}
 				</div>
 			</div>
 		</a>
@@ -438,7 +626,11 @@ async function viewEvent(id) {
 		];
 	}
 
-	const canManage = me.is_admin || event.created_by === me.id;
+	// Un evento concluso è in sola lettura; solo un admin può ancora eliminarlo (come impone la RLS).
+	const closed = isPast(event.starts_at);
+	const isOwner = event.created_by === me.id;
+	const canEdit = !closed && (me.is_admin || isOwner);
+	const canDelete = me.is_admin || (!closed && isOwner);
 	const mine = event.responses.find((r) => r.user_id === me.id);
 	const count = tally(event.responses);
 	const people = [...event.responses].sort(
@@ -450,7 +642,7 @@ async function viewEvent(id) {
 	const items = [...event.items].sort((a, b) =>
 		a.created_at.localeCompare(b.created_at),
 	);
-	const reload = () => show(viewEvent, id);
+	const reload = () => show(viewEvent, [id]);
 
 	const proposalRow = (p) => {
 		const myVote = p.votes.find((v) => v.user_id === me.id)?.value ?? 0;
@@ -484,6 +676,7 @@ async function viewEvent(id) {
 						data-value="1"
 						aria-pressed="${String(myVote === 1)}"
 						aria-label="${t("proposals.up")}"
+						${closed && "disabled"}
 					>
 						${icon("up")}
 					</button>
@@ -502,11 +695,12 @@ async function viewEvent(id) {
 						data-value="-1"
 						aria-pressed="${String(myVote === -1)}"
 						aria-label="${t("proposals.down")}"
+						${closed && "disabled"}
 					>
 						${icon("down")}
 					</button>
 				</div>
-				${canManage &&
+				${canEdit &&
 				html`<button
 					class="btn btn-sm btn-soft"
 					data-action="adopt"
@@ -515,7 +709,8 @@ async function viewEvent(id) {
 				>
 					${icon("check")}${t("proposals.adopt")}
 				</button>`}
-				${(canManage || p.created_by === me.id) &&
+				${!closed &&
+				(canEdit || p.created_by === me.id) &&
 				deleteButton("deleteProposal", p.id)}
 			</div>
 		</li>`;
@@ -538,7 +733,8 @@ async function viewEvent(id) {
 							: t("items.free")}
 				</div>
 			</div>
-			<div class="row-actions">
+			${!closed &&
+			html`<div class="row-actions">
 				${!item.claimed_by &&
 				html`<button
 					class="btn btn-sm btn-soft"
@@ -555,22 +751,76 @@ async function viewEvent(id) {
 				>
 					${t("items.unclaim")}
 				</button>`}
-				${(canManage || item.created_by === me.id) &&
+				${(canEdit || item.created_by === me.id) &&
 				deleteButton("deleteItem", item.id)}
-			</div>
+			</div>`}
 		</li>`;
+
+	const rsvpFooter = () => {
+		if (closed) {
+			if (!mine)
+				return html`<p class="muted small">${t("rsvp.noReply")}</p>`;
+			return (
+				mine.status !== "no" &&
+				html`<p class="muted small">
+					${tn("rsvp.totalPast", 1 + mine.guests)}
+				</p>`
+			);
+		}
+		if (!mine) return html`<p class="muted small">${t("rsvp.pending")}</p>`;
+		return (
+			mine.status !== "no" &&
+			html`<div class="guests">
+				<div>
+					<strong>${t("rsvp.bring")}</strong>
+					<div class="muted small">
+						${tn("rsvp.total", 1 + mine.guests)}
+					</div>
+				</div>
+				<div class="stepper">
+					<button
+						class="btn-icon"
+						data-action="guests"
+						data-delta="-1"
+						aria-label="${t("rsvp.less")}"
+						${!mine.guests && "disabled"}
+					>
+						${icon("minus")}
+					</button>
+					<output aria-live="polite">${mine.guests}</output>
+					<button
+						class="btn-icon"
+						data-action="guests"
+						data-delta="1"
+						aria-label="${t("rsvp.more")}"
+						${mine.guests >= MAX_GUESTS && "disabled"}
+					>
+						${icon("plus")}
+					</button>
+				</div>
+			</div>`
+		);
+	};
 
 	return [
 		html`${backLink("#/", t("event.back"))}
+			${closed &&
+			html`<p class="notice">
+				${icon("archive")}${t("event.readOnly")}
+			</p>`}
 			<div class="event-layout">
 				<div class="col">
-					<article class="card panel hero">
+					<article class="card panel hero ${closed && "past"}">
 						<div class="hero-head">
 							${dateTile(event.starts_at, "date-tile-lg")}
 							<div class="hero-title">
 								${isLive(event.starts_at) &&
 								html`<span class="pill live"
 									>${t("date.live")}</span
+								>`}
+								${closed &&
+								html`<span class="pill"
+									>${icon("archive")}${t("date.past")}</span
 								>`}
 								<h1>${event.title}</h1>
 								<p class="muted small">
@@ -613,38 +863,48 @@ async function viewEvent(id) {
 						${event.description &&
 						html`<p class="desc">${event.description}</p>`}
 						<div class="hero-actions">
+							<button
+								class="btn btn-sm btn-primary"
+								data-action="share"
+							>
+								${icon("share")}${t("share.button")}
+							</button>
 							<button class="btn btn-sm" data-action="ics">
 								${icon("download")}${t("event.addToCalendar")}
 							</button>
-							${canManage &&
+							${canEdit &&
 							html`<a
-									class="btn btn-sm"
-									href="#/event/${event.id}/edit"
-									>${icon("edit")}${t("event.edit")}</a
-								>
-								<button
-									class="btn btn-sm btn-danger"
-									data-action="deleteEvent"
-								>
-									${icon("trash")}${t("common.delete")}
-								</button>`}
+								class="btn btn-sm"
+								href="#/event/${event.id}/edit"
+								>${icon("edit")}${t("event.edit")}</a
+							>`}
+							${canDelete &&
+							html`<button
+								class="btn btn-sm btn-danger"
+								data-action="deleteEvent"
+							>
+								${icon("trash")}${t("common.delete")}
+							</button>`}
 						</div>
 					</article>
 
-					<section class="card panel proposals-card">
+					${(!closed || proposals.length > 0) &&
+					html`<section class="card panel proposals-card">
 						<div>
 							<h2 class="card-title">
 								${icon("bulb")}${t("proposals.title")}
 							</h2>
-							<p class="muted small">
+							${!closed &&
+							html`<p class="muted small">
 								${t("proposals.subtitle")}
-							</p>
+							</p>`}
 						</div>
 						${proposals.length > 0 &&
 						html`<ul class="rows">
 							${proposals.map(proposalRow)}
 						</ul>`}
-						<form class="add-form" data-submit="propose">
+						${!closed &&
+						html`<form class="add-form" data-submit="propose">
 							<label class="field">
 								<span>${t("proposals.date")}</span>
 								<input
@@ -666,21 +926,28 @@ async function viewEvent(id) {
 							<button class="btn">
 								${icon("plus")}${t("proposals.add")}
 							</button>
-						</form>
-					</section>
-
-					<section class="card panel items-card">
+						</form>`}
+					</section>`}
+					${(!closed || items.length > 0) &&
+					html`<section class="card panel items-card">
 						<div>
 							<h2 class="card-title">
 								${icon("package")}${t("items.title")}
 							</h2>
-							<p class="muted small">${t("items.subtitle")}</p>
+							${!closed &&
+							html`<p class="muted small">
+								${t("items.subtitle")}
+							</p>`}
 						</div>
 						${items.length > 0 &&
 						html`<ul class="rows">
 							${items.map(itemRow)}
 						</ul>`}
-						<form class="add-form single" data-submit="addItem">
+						${!closed &&
+						html`<form
+							class="add-form single"
+							data-submit="addItem"
+						>
 							<input
 								name="label"
 								required
@@ -694,19 +961,23 @@ async function viewEvent(id) {
 									>${t("items.add")}</span
 								>
 							</button>
-						</form>
-					</section>
+						</form>`}
+					</section>`}
 				</div>
 
 				<aside class="col">
 					<section class="card panel rsvp">
 						<h2 class="card-title">
-							${icon("calendarCheck")}${t("rsvp.title")}
+							${icon("calendarCheck")}${t(
+								closed ? "rsvp.titlePast" : "rsvp.title",
+							)}
 						</h2>
 						<div
 							class="rsvp-options"
 							role="group"
-							aria-label="${t("rsvp.title")}"
+							aria-label="${t(
+								closed ? "rsvp.titlePast" : "rsvp.title",
+							)}"
 						>
 							${STATUSES.map(
 								(s) =>
@@ -717,6 +988,7 @@ async function viewEvent(id) {
 										aria-pressed="${String(
 											mine?.status === s,
 										)}"
+										${closed && "disabled"}
 									>
 										${icon(STATUS_ICON[s])}<span
 											>${t(`rsvp.${s}`)}</span
@@ -724,41 +996,7 @@ async function viewEvent(id) {
 									</button>`,
 							)}
 						</div>
-						${!mine &&
-						html`<p class="muted small">${t("rsvp.pending")}</p>`}
-						${mine &&
-						mine.status !== "no" &&
-						html`<div class="guests">
-							<div>
-								<strong>${t("rsvp.bring")}</strong>
-								<div class="muted small">
-									${tn("rsvp.total", 1 + mine.guests)}
-								</div>
-							</div>
-							<div class="stepper">
-								<button
-									class="btn-icon"
-									data-action="guests"
-									data-delta="-1"
-									aria-label="${t("rsvp.less")}"
-									${!mine.guests && "disabled"}
-								>
-									${icon("minus")}
-								</button>
-								<output aria-live="polite"
-									>${mine.guests}</output
-								>
-								<button
-									class="btn-icon"
-									data-action="guests"
-									data-delta="1"
-									aria-label="${t("rsvp.more")}"
-									${mine.guests >= MAX_GUESTS && "disabled"}
-								>
-									${icon("plus")}
-								</button>
-							</div>
-						</div>`}
+						${rsvpFooter()}
 					</section>
 
 					<section class="card panel people-card">
@@ -813,6 +1051,7 @@ async function viewEvent(id) {
 				</aside>
 			</div>`,
 		{
+			share: () => shareEvent(event),
 			ics: () =>
 				downloadFile(
 					`${slug(event.title)}.ics`,
@@ -909,6 +1148,8 @@ async function viewEventForm(id) {
 	const event = id ? await api.getEvent(id) : null;
 	if (id && !(event && (me.is_admin || event.created_by === me.id)))
 		return void (location.hash = "#/");
+	if (event && isPast(event.starts_at))
+		return void (location.hash = `#/event/${id}`);
 	const back = id ? `#/event/${id}` : "#/";
 
 	return [
@@ -1199,8 +1440,15 @@ async function viewAdmin() {
 									${icon("key")}
 								</button>
 								${u.id === me.id
-									? html`<span class="btn-icon" aria-hidden="true"></span>`
-									: deleteButton("deleteUser", u.id, u.display_name)}
+									? html`<span
+											class="btn-icon"
+											aria-hidden="true"
+										></span>`
+									: deleteButton(
+											"deleteUser",
+											u.id,
+											u.display_name,
+										)}
 							</div>
 						</li>`,
 				)}
@@ -1309,6 +1557,7 @@ if (api.configured) {
 				if (!profile) return void api.signOut();
 				me = { ...profile, email: user.email };
 			} catch (err) {
+				stopLive();
 				renderNav();
 				return void mount(app, errorState(err.message));
 			}

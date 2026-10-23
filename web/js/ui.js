@@ -30,11 +30,66 @@ const render = (v) =>
 export const html = (strings, ...values) =>
 	new Safe(strings.reduce((out, s, i) => out + render(values[i - 1]) + s));
 
+// Chiave stabile di un campo o di un pulsante d'azione, per ritrovarlo dopo un re-render.
+const keyOf = (el) =>
+	el.name && el.form
+		? `field|${el.form.dataset.submit}|${el.name}`
+		: el.dataset?.action &&
+			`action|${el.dataset.action}|${el.dataset.id}|${el.dataset.status}|${el.dataset.value}|${el.dataset.delta}`;
+
+const isDirty = (el) =>
+	el.type === "checkbox"
+		? el.checked !== el.defaultChecked
+		: el.value !== el.defaultValue;
+
+/** Testo digitato e non ancora inviato, più focus e cursore: sopravvivono al re-render della stessa pagina. */
+function snapshot(root) {
+	const values = new Map();
+	for (const el of root.querySelectorAll(
+		"form[data-submit]:not([data-sent]) [name]",
+	))
+		if (isDirty(el))
+			values.set(
+				keyOf(el),
+				el.type === "checkbox" ? el.checked : el.value,
+			);
+	const active = root.contains(document.activeElement)
+		? document.activeElement
+		: null;
+	const focus = active &&
+		keyOf(active) && {
+			key: keyOf(active),
+			start: active.selectionStart,
+			end: active.selectionEnd,
+		};
+	return { values, focus };
+}
+
+function restore(root, { values, focus }) {
+	for (const el of root.querySelectorAll(
+		"form[data-submit] [name], [data-action]",
+	)) {
+		const key = keyOf(el);
+		if (values.has(key)) {
+			if (el.type === "checkbox") el.checked = values.get(key);
+			else el.value = values.get(key);
+		}
+		if (key && key === focus?.key) {
+			el.focus({ preventScroll: true });
+			if (focus.start != null)
+				el.setSelectionRange?.(focus.start, focus.end);
+		}
+	}
+}
+
 /**
  * Renderizza il markup in root e collega i click su [data-action] e i submit di form[data-submit].
  * Mentre un'azione è in corso le altre vengono ignorate, così i doppi click non generano richieste concorrenti.
+ * Se si ri-renderizza la stessa pagina (es. aggiornamento in tempo reale) il testo non inviato e il focus restano.
  */
 export function mount(root, markup, actions = {}) {
+	const page = location.hash;
+	const kept = root.dataset.page === page ? snapshot(root) : null;
 	let busy = false;
 	const run = (fn) => {
 		busy = true;
@@ -46,6 +101,8 @@ export function mount(root, markup, actions = {}) {
 	};
 
 	root.innerHTML = markup;
+	root.dataset.page = page;
+	if (kept) restore(root, kept);
 	root.onclick = (e) => {
 		const el = e.target.closest("[data-action]");
 		const fn = el && actions[el.dataset.action];
@@ -61,8 +118,11 @@ export function mount(root, markup, actions = {}) {
 		if (busy) return;
 		const button = e.submitter;
 		if (button) button.disabled = true;
+		// Un form inviato non va ripristinato dal re-render che segue il salvataggio.
+		form.dataset.sent = "";
 		run(() => fn(Object.fromEntries(new FormData(form)), form)).finally(
 			() => {
+				delete form.dataset.sent;
 				if (button) button.disabled = false;
 			},
 		);
@@ -88,7 +148,7 @@ export function notify(message, isError = false) {
 
 /**
  * Dialog modale. Restituisce true (o il valore dell'input) se confermato, null se annullato.
- * `body` accetta un frammento html`` già sicuro.
+ * `body` accetta un frammento html`` già sicuro; i suoi elementi [data-handler] chiamano `handlers[nome](el, dialog)`.
  */
 export function ask({
 	title,
@@ -98,6 +158,7 @@ export function ask({
 	confirm = t("common.confirm"),
 	cancel = t("common.cancel"),
 	danger = false,
+	handlers = {},
 }) {
 	const dialog = document.getElementById("dialog");
 	dialog.innerHTML = html` <form method="dialog" class="dialog-form">
@@ -147,13 +208,19 @@ export function ask({
 	return new Promise((resolve) => {
 		dialog.onclick = async (e) => {
 			if (e.target === dialog) return dialog.close();
+			const handler = e.target.closest("[data-handler]");
+			if (handler)
+				return handlers[handler.dataset.handler]?.(handler, dialog);
 			if (e.target.closest("[data-generate]")) {
 				dialog.querySelector("#dialog-input").value = randomPassword();
 			}
 			const copy = e.target.closest("[data-copy]");
 			if (copy) {
 				await navigator.clipboard.writeText(copy.dataset.copy);
-				copy.querySelector("span").textContent = t("common.copied");
+				const label = copy.querySelector("span");
+				const original = label.textContent;
+				label.textContent = t("common.copied");
+				setTimeout(() => (label.textContent = original), 2000);
 			}
 		};
 		dialog.addEventListener(
@@ -174,6 +241,13 @@ export function ask({
 // Icone in stile Lucide (24×24, stroke).
 const ICONS = {
 	alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+	archive:
+		'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+	mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+	message: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+	more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+	send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+	share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>',
 	back: '<path d="m15 18-6-6 6-6"/>',
 	bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/>',
 	calendar:

@@ -386,6 +386,23 @@ button {
 	color: var(--text);
 }
 
+.notice {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-3);
+	margin-bottom: var(--sp-4);
+	padding: var(--sp-3) var(--sp-4);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--r-md);
+	background: var(--surface-2);
+	color: var(--text-2);
+	font-size: var(--fs-sm);
+}
+
+.notice .icon {
+	color: var(--muted);
+}
+
 /* ── Bottoni ───────────────────────────────────────────────────────────── */
 
 .btn {
@@ -698,6 +715,15 @@ button {
 	font-size: var(--fs-2xl);
 }
 
+.date-tile-sm {
+	width: 48px;
+	height: 56px;
+}
+
+.date-tile-sm strong {
+	font-size: var(--fs-lg);
+}
+
 /* ── Lista eventi ──────────────────────────────────────────────────────── */
 
 .day-group+.day-group {
@@ -737,6 +763,34 @@ button {
 	border-color: rgb(129 140 248 / 0.4);
 	background: #15171e;
 	transform: translateY(-1px);
+}
+
+/* Eventi conclusi: stessi contenuti, toni spenti */
+.event-card.past {
+	background: transparent;
+}
+
+.event-card.past h3 {
+	color: var(--text-2);
+}
+
+.event-card.past .date-tile,
+.hero.past .date-tile {
+	background: var(--surface-2);
+	color: var(--muted);
+}
+
+.event-card.past .date-tile strong,
+.hero.past .date-tile strong {
+	color: var(--text-2);
+}
+
+.event-card.past .avatar-stack {
+	opacity: 0.7;
+}
+
+.more {
+	margin-top: var(--sp-6);
 }
 
 .event-card-body {
@@ -954,6 +1008,18 @@ button {
 	transform: scale(0.98);
 }
 
+/* Evento concluso: la risposta resta visibile ma non si può cambiare */
+.rsvp-option:disabled {
+	cursor: default;
+	transform: none;
+}
+
+.rsvp-option:disabled:not([aria-pressed="true"]) {
+	background: transparent;
+	color: var(--muted);
+	opacity: 0.6;
+}
+
 .rsvp-option.yes[aria-pressed="true"] {
 	border-color: var(--yes);
 	background: var(--yes-soft);
@@ -1137,6 +1203,16 @@ button {
 .vote-btn:hover {
 	background: var(--surface-3);
 	color: var(--text);
+}
+
+.vote-btn:disabled {
+	cursor: default;
+}
+
+.vote-btn:disabled:not([aria-pressed="true"]) {
+	background: none;
+	color: var(--muted);
+	opacity: 0.5;
 }
 
 .vote-btn.up[aria-pressed="true"] {
@@ -1641,6 +1717,85 @@ dialog::backdrop {
 
 .dialog-form>.btn {
 	align-self: flex-start;
+}
+
+/* ── Condivisione ──────────────────────────────────────────────────────── */
+
+.share-preview {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-3);
+	padding: var(--sp-3);
+	border-radius: var(--r-md);
+	background: var(--surface-2);
+}
+
+.share-preview .grow>*+* {
+	margin-top: 2px;
+}
+
+.share-targets {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+	gap: var(--sp-2);
+}
+
+.share-target {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--sp-2);
+	padding: var(--sp-3) var(--sp-1);
+	border: 0;
+	border-radius: var(--r-md);
+	background: none;
+	color: var(--text-2);
+	font-size: var(--fs-xs);
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		background 0.15s,
+		color 0.15s;
+}
+
+.share-target:hover {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+.share-icon {
+	display: grid;
+	place-items: center;
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: var(--surface-3);
+	color: var(--text);
+	transition: transform 0.15s;
+}
+
+.share-target:hover .share-icon {
+	transform: scale(1.06);
+}
+
+.share-icon .icon {
+	width: 22px;
+	height: 22px;
+}
+
+.share-target.whatsapp .share-icon {
+	background: #25d366;
+	color: #fff;
+}
+
+.share-target.telegram .share-icon {
+	background: #229ed9;
+	color: #fff;
+}
+
+.share-target.email .share-icon {
+	background: var(--accent);
+	color: #fff;
 }
 
 .dialog-actions {

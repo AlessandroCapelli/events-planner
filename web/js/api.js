@@ -40,13 +40,26 @@ export const getProfile = (id) =>
 export const updateProfile = (id, display_name) =>
 	sb.from("profiles").update({ display_name }).eq("id", id).then(unwrap);
 
-export const listEvents = () =>
+const EVENT_SUMMARY =
+	"id, title, starts_at, location, responses(user_id, status, guests, profile:profiles(display_name))";
+
+/** Eventi ancora aperti (iniziati dopo `since`), dal più vicino. */
+export const listUpcoming = (since) =>
 	sb
 		.from("events")
-		.select(
-			"id, title, starts_at, location, responses(user_id, status, guests, profile:profiles(display_name))",
-		)
+		.select(EVENT_SUMMARY)
+		.gt("starts_at", since)
 		.order("starts_at")
+		.then(unwrap);
+
+/** Eventi conclusi, dal più recente; al massimo `limit`. */
+export const listPast = (since, limit) =>
+	sb
+		.from("events")
+		.select(EVENT_SUMMARY)
+		.lte("starts_at", since)
+		.order("starts_at", { ascending: false })
+		.limit(limit)
 		.then(unwrap);
 export const getEvent = (id) =>
 	sb
@@ -97,6 +110,28 @@ export const claimItem = (id, user_id) =>
 		.then(unwrap);
 export const deleteItem = (id) =>
 	sb.from("items").delete().eq("id", id).then(unwrap);
+
+/**
+ * Iscrive alle modifiche delle tabelle indicate come [tabella, filtro?] e chiama onChange a ogni modifica.
+ * onChange viene chiamata anche dopo una riconnessione, per recuperare le modifiche perse nel frattempo.
+ * Restituisce la funzione che chiude l'iscrizione.
+ */
+export function subscribe(bindings, onChange) {
+	const channel = sb.channel(`live:${crypto.randomUUID()}`);
+	for (const [table, filter] of bindings)
+		channel.on(
+			"postgres_changes",
+			{ event: "*", schema: "public", table, ...(filter && { filter }) },
+			onChange,
+		);
+	let joined = false;
+	channel.subscribe((status) => {
+		if (status !== "SUBSCRIBED") return;
+		if (joined) onChange();
+		joined = true;
+	});
+	return () => sb.removeChannel(channel);
+}
 
 export async function admin(action, payload = {}) {
 	const { data, error } = await sb.functions.invoke("admin-users", {

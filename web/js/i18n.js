@@ -24,6 +24,27 @@ const dict = {
 		"date.today": "Oggi",
 		"date.tomorrow": "Domani",
 		"date.live": "In corso",
+		"date.past": "Concluso",
+		"events.more": "Mostra eventi più vecchi",
+		"event.readOnly":
+			"Evento concluso: puoi consultarlo ma non modificarlo.",
+		"rsvp.titlePast": "La tua risposta",
+		"rsvp.noReply": "Non hai risposto a questo evento.",
+		"rsvp.totalPast.one": "Solo tu",
+		"rsvp.totalPast.other": "In totale eravate in {n}",
+		"people.went.one": "{n} ha partecipato",
+		"people.went.other": "{n} hanno partecipato",
+		"people.nobodyWent": "Nessun partecipante",
+		"share.button": "Condividi",
+		"share.title": "Condividi l'evento",
+		"share.subtitle":
+			"Chi riceve il link vede l'evento dopo aver fatto l'accesso.",
+		"share.email": "Email",
+		"share.more": "Altre app",
+		"share.link": "Link dell'evento",
+		"share.copy": "Copia",
+		"share.reply": "Rispondi qui:",
+		"common.close": "Chiudi",
 		"event.back": "Eventi",
 		"event.backToEvent": "Torna all'evento",
 		"event.by": "Organizzato da {name}",
@@ -35,8 +56,7 @@ const dict = {
 			"Verranno eliminate anche risposte, proposte e lista delle cose da portare.",
 		"event.deleted": "Evento eliminato.",
 		"event.notFound": "Evento non disponibile",
-		"event.notFoundHint":
-			"Potrebbe essere stato eliminato o essere già concluso.",
+		"event.notFoundHint": "Potrebbe essere stato eliminato.",
 		"rsvp.title": "Partecipi?",
 		"rsvp.yes": "Ci sono",
 		"rsvp.maybe": "Forse",
@@ -171,6 +191,27 @@ const dict = {
 		"date.today": "Today",
 		"date.tomorrow": "Tomorrow",
 		"date.live": "Happening now",
+		"date.past": "Ended",
+		"events.more": "Show older events",
+		"event.readOnly":
+			"This event has ended: you can view it but not change it.",
+		"rsvp.titlePast": "Your reply",
+		"rsvp.noReply": "You didn't reply to this event.",
+		"rsvp.totalPast.one": "Just you",
+		"rsvp.totalPast.other": "{n} of you in total",
+		"people.went.one": "{n} went",
+		"people.went.other": "{n} went",
+		"people.nobodyWent": "No attendees",
+		"share.button": "Share",
+		"share.title": "Share the event",
+		"share.subtitle":
+			"Whoever gets the link sees the event after signing in.",
+		"share.email": "Email",
+		"share.more": "More apps",
+		"share.link": "Event link",
+		"share.copy": "Copy",
+		"share.reply": "Reply here:",
+		"common.close": "Close",
 		"event.back": "Events",
 		"event.backToEvent": "Back to event",
 		"event.by": "Organised by {name}",
@@ -182,7 +223,7 @@ const dict = {
 			"Responses, proposals and the bring list will be deleted too.",
 		"event.deleted": "Event deleted.",
 		"event.notFound": "Event not available",
-		"event.notFoundHint": "It may have been deleted or already be over.",
+		"event.notFoundHint": "It may have been deleted.",
 		"rsvp.title": "Are you coming?",
 		"rsvp.yes": "I'm in",
 		"rsvp.maybe": "Maybe",
@@ -343,7 +384,14 @@ const dayDiff = (date) =>
 const yearIfOther = (date) =>
 	date.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {};
 
-export const isLive = (iso) => new Date(iso) <= new Date();
+/** Ore dopo l'inizio in cui un evento resta aperto: deve coincidere con public.is_open() nel database. */
+const OPEN_HOURS = 12;
+
+/** Istante prima del quale un evento è concluso (sola lettura). */
+export const openSince = () =>
+	new Date(Date.now() - OPEN_HOURS * 36e5).toISOString();
+export const isPast = (iso) => new Date(iso) <= new Date(openSince());
+export const isLive = (iso) => !isPast(iso) && new Date(iso) <= new Date();
 
 export const fmtTime = (iso) =>
 	fmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
@@ -382,28 +430,32 @@ export function dayParts(iso) {
 	};
 }
 
-/** Intestazione del gruppo nella lista: Oggi, Domani, oppure mese e anno. */
+/** Intestazione del gruppo nella lista: Oggi, Domani, oppure mese e anno (sempre per i conclusi). */
 export function groupLabel(iso) {
 	const date = new Date(iso);
-	const diff = dayDiff(date);
-	if (diff <= 0) return t("date.today");
-	if (diff === 1) return t("date.tomorrow");
+	if (!isPast(iso)) {
+		const diff = dayDiff(date);
+		if (diff <= 0) return t("date.today");
+		if (diff === 1) return t("date.tomorrow");
+	}
 	return capitalize(fmt({ month: "long", year: "numeric" }).format(date));
 }
 
-/** "tra 2 ore", "domani", "tra 3 giorni"… oppure "In corso" se già iniziato. */
+/** "tra 2 ore", "domani", "3 giorni fa"… oppure "In corso" se iniziato da meno di 12 ore. */
 export function relative(iso) {
-	const date = new Date(iso);
 	if (isLive(iso)) return t("date.live");
+	const date = new Date(iso);
 	const rtf = new Intl.RelativeTimeFormat(current, { numeric: "auto" });
 	const days = dayDiff(date);
 	if (days === 0) {
-		const minutes = Math.max(1, Math.round((date - Date.now()) / 6e4));
-		return minutes < 60
+		const minutes = Math.round((date - Date.now()) / 6e4) || 1;
+		return Math.abs(minutes) < 60
 			? rtf.format(minutes, "minute")
 			: rtf.format(Math.round(minutes / 60), "hour");
 	}
-	if (days < 7) return rtf.format(days, "day");
-	if (days < 30) return rtf.format(Math.round(days / 7), "week");
-	return rtf.format(Math.round(days / 30), "month");
+	const span = Math.abs(days);
+	if (span < 7) return rtf.format(days, "day");
+	if (span < 30) return rtf.format(Math.round(days / 7), "week");
+	if (span < 365) return rtf.format(Math.round(days / 30), "month");
+	return rtf.format(Math.round(days / 365), "year");
 }
