@@ -1,0 +1,6 @@
+web/config.js
+supabase/.temp/
+supabase/.branches/
+.env
+.DS_Store
+Thumbs.db
