@@ -200,20 +200,18 @@ button {
 	letter-spacing: -0.01em;
 }
 
-.brand-mark,
+/* Stesso file della favicon (favicon.svg): l'icona della tab e quella della topbar coincidono. */
+.brand-mark {
+	display: block;
+	width: 34px;
+	height: 34px;
+}
+
 .auth-logo {
 	display: grid;
 	place-items: center;
-	width: 34px;
-	height: 34px;
-	border-radius: 10px;
 	background: linear-gradient(135deg, #6366f1, #8b5cf6);
 	color: #fff;
-}
-
-.brand-mark .icon {
-	width: 18px;
-	height: 18px;
 }
 
 .nav {
@@ -222,40 +220,11 @@ button {
 	gap: 8px;
 }
 
-.nav-links {
-	display: flex;
-	gap: 4px;
-}
-
-.nav-link {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 12px;
-	border-radius: 999px;
-	color: var(--muted);
-	font-weight: 550;
-	transition: background 0.15s, color 0.15s;
-}
-
-.nav-link:hover {
-	background: var(--surface-2);
-	color: var(--text);
-}
-
-.nav-link.active {
-	background: var(--accent-soft);
-	color: var(--accent-text);
-}
-
 .menu {
 	position: relative;
 }
 
 .menu>summary {
-	display: block;
-	border-radius: 999px;
-	cursor: pointer;
 	list-style: none;
 }
 
@@ -263,15 +232,35 @@ button {
 	display: none;
 }
 
-.menu-trigger .avatar {
-	width: 36px;
-	height: 36px;
-	transition: box-shadow 0.15s;
+.menu-trigger {
+	display: grid;
+	place-items: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 12px;
+	color: var(--muted);
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
 }
 
-.menu-trigger:hover .avatar,
-.menu[open] .menu-trigger .avatar {
-	box-shadow: 0 0 0 3px var(--accent-soft);
+.menu-trigger .icon {
+	width: 22px;
+	height: 22px;
+	transition: transform 0.3s;
+}
+
+.menu-trigger:hover {
+	background: var(--surface-2);
+	color: var(--text);
+}
+
+.menu[open] .menu-trigger {
+	background: var(--accent-soft);
+	color: var(--accent-text);
+}
+
+.menu[open] .menu-trigger .icon {
+	transform: rotate(45deg);
 }
 
 .menu-panel {
@@ -321,10 +310,6 @@ button {
 .menu-item.danger,
 .menu-item.danger .icon {
 	color: var(--no-text);
-}
-
-.mobile-only {
-	display: none;
 }
 
 /* ── Layout ────────────────────────────────────────────────────────────── */
@@ -1659,13 +1644,6 @@ dialog::backdrop {
 		padding: 16px;
 	}
 
-	.nav-links {
-		display: none;
-	}
-
-	.mobile-only {
-		display: flex;
-	}
 
 	.page-head {
 		margin-bottom: 18px;

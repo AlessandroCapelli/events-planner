@@ -39,7 +39,7 @@ supabase/
 ### 1. Supabase
 
 1. Crea un progetto su [supabase.com](https://supabase.com).
-2. **SQL Editor** → incolla ed esegui `supabase/migrations/20261023000000_init.sql`
+2. **SQL Editor** → incolla ed esegui, in ordine, i file in `supabase/migrations/`
    (in alternativa, con la CLI: `supabase link --project-ref <ref>` e poi `supabase db push`).
 3. **Authentication → Sign In / Providers** → disattiva _Allow new users to sign up_.
 4. Pubblica la Edge Function:

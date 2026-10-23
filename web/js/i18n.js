@@ -1,9 +1,8 @@
 const dict = {
 	it: {
-		"nav.events": "Eventi",
 		"nav.admin": "Utenti",
 		"nav.account": "Il mio account",
-		"nav.menu": "Menu utente",
+		"nav.menu": "Impostazioni",
 		"nav.switchLang": "English",
 		"nav.logout": "Esci",
 		"login.title": "Bentornato",
@@ -72,8 +71,9 @@ const dict = {
 		"proposals.adoptHint": "Aggiorna l'evento con questa proposta",
 		"proposals.confirmAdopt": "Adottare questa proposta?",
 		"proposals.confirmAdoptHint":
-			"Data e/o luogo dell'evento verranno aggiornati e la proposta rimossa.",
-		"proposals.adopted": "Evento aggiornato.",
+			"Data e/o luogo dell'evento verranno aggiornati e la proposta rimossa. Le risposte di tutti i partecipanti verranno azzerate: ognuno dovrà confermare di nuovo.",
+		"proposals.adopted":
+			"Evento aggiornato: le risposte sono state azzerate.",
 		"items.title": "Cose da portare",
 		"items.subtitle": "Aggiungi cosa serve e prenota quello che porti tu.",
 		"items.placeholder": "es. bibite, chitarra, carbonella…",
@@ -146,10 +146,9 @@ const dict = {
 			"Configurazione mancante: crea web/config.js partendo da web/config.example.js.",
 	},
 	en: {
-		"nav.events": "Events",
 		"nav.admin": "Users",
 		"nav.account": "My account",
-		"nav.menu": "User menu",
+		"nav.menu": "Settings",
 		"nav.switchLang": "Italiano",
 		"nav.logout": "Log out",
 		"login.title": "Welcome back",
@@ -215,8 +214,8 @@ const dict = {
 		"proposals.adoptHint": "Update the event with this proposal",
 		"proposals.confirmAdopt": "Adopt this proposal?",
 		"proposals.confirmAdoptHint":
-			"The event date and/or place will be updated and the proposal removed.",
-		"proposals.adopted": "Event updated.",
+			"The event date and/or place will be updated and the proposal removed. Everyone's replies will be reset and will need to be confirmed again.",
+		"proposals.adopted": "Event updated: replies have been reset.",
 		"items.title": "What to bring",
 		"items.subtitle": "Add what's needed and claim what you'll bring.",
 		"items.placeholder": "e.g. drinks, guitar, charcoal…",

@@ -74,71 +74,44 @@ async function render() {
 }
 
 function renderNav() {
-	const path = location.hash.slice(1) || "/";
-	const onEvents =
-		path === "/" || path === "/new" || path.startsWith("/event/");
-	const navLink = (href, label, name, active) =>
-		html`<a
-			class="nav-link ${active && "active"}"
-			href="${href}"
-			${active && html`aria-current="page"`}
-		>
-			${icon(name)}<span>${label}</span></a
-		>`;
-
 	mount(
 		nav,
 		me
-			? html` <div class="nav-links">
-						${navLink("#/", t("nav.events"), "calendar", onEvents)}
-						${me.is_admin &&
-						navLink(
-							"#/admin",
-							t("nav.admin"),
-							"users",
-							path === "/admin",
-						)}
-					</div>
-					<details class="menu">
-						<summary
-							class="menu-trigger"
-							aria-label="${t("nav.menu")}"
-						>
-							${avatar(me.display_name, me.id)}
-						</summary>
-						<div class="menu-panel">
-							<div class="menu-head">
-								${avatar(me.display_name, me.id, "lg")}
-								<div class="grow">
-									<strong class="truncate"
-										>${me.display_name}</strong
-									>
-									<div class="muted small truncate">
-										${me.email}
-									</div>
+			? html`<details class="menu">
+					<summary
+						class="menu-trigger"
+						aria-label="${t("nav.menu")}"
+						title="${t("nav.menu")}"
+					>
+						${icon("settings")}
+					</summary>
+					<div class="menu-panel">
+						<div class="menu-head">
+							${avatar(me.display_name, me.id, "lg")}
+							<div class="grow">
+								<strong class="truncate"
+									>${me.display_name}</strong
+								>
+								<div class="muted small truncate">
+									${me.email}
 								</div>
 							</div>
-							<a class="menu-item mobile-only" href="#/"
-								>${icon("calendar")}${t("nav.events")}</a
-							>
-							${me.is_admin &&
-							html`<a class="menu-item mobile-only" href="#/admin"
-								>${icon("users")}${t("nav.admin")}</a
-							>`}
-							<a class="menu-item" href="#/account"
-								>${icon("user")}${t("nav.account")}</a
-							>
-							<button class="menu-item" data-action="lang">
-								${icon("globe")}${t("nav.switchLang")}
-							</button>
-							<button
-								class="menu-item danger"
-								data-action="logout"
-							>
-								${icon("logout")}${t("nav.logout")}
-							</button>
 						</div>
-					</details>`
+						<a class="menu-item" href="#/account"
+							>${icon("user")}${t("nav.account")}</a
+						>
+						${me.is_admin &&
+						html`<a class="menu-item" href="#/admin"
+							>${icon("users")}${t("nav.admin")}</a
+						>`}
+						<button class="menu-item" data-action="lang">
+							${icon("globe")}${t("nav.switchLang")}
+						</button>
+						<button class="menu-item danger" data-action="logout">
+							${icon("logout")}${t("nav.logout")}
+						</button>
+					</div>
+				</details>`
 			: html`<button class="btn btn-ghost btn-sm" data-action="lang">
 					${icon("globe")}${t("nav.switchLang")}
 				</button>`,
@@ -242,7 +215,22 @@ function toIcs(event) {
 			.replace(/\.\d{3}/, "");
 	const text = (value) =>
 		value.replace(/[\\;,]/g, "\\$&").replace(/\r?\n/g, "\\n");
+	// Evento "tutto il giorno": date locali, con DTEND esclusivo al giorno successivo.
+	const day = (date) =>
+		`${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 	const start = new Date(event.starts_at);
+	const end = new Date(
+		start.getFullYear(),
+		start.getMonth(),
+		start.getDate() + 1,
+	);
+	// L'orario si perde nell'evento giornaliero: lo riportiamo in testa alla descrizione.
+	const description = [
+		`${t("form.startsAt")}: ${fmtLongDate(event.starts_at)}, ${fmtTime(event.starts_at)}`,
+		event.description,
+	]
+		.filter(Boolean)
+		.join("\n\n");
 	return [
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
@@ -250,11 +238,11 @@ function toIcs(event) {
 		"BEGIN:VEVENT",
 		`UID:${event.id}@events-planner`,
 		`DTSTAMP:${stamp(new Date())}`,
-		`DTSTART:${stamp(start)}`,
-		`DTEND:${stamp(new Date(start.getTime() + 2 * 36e5))}`,
+		`DTSTART;VALUE=DATE:${day(start)}`,
+		`DTEND;VALUE=DATE:${day(end)}`,
 		`SUMMARY:${text(event.title)}`,
 		event.location && `LOCATION:${text(event.location)}`,
-		event.description && `DESCRIPTION:${text(event.description)}`,
+		`DESCRIPTION:${text(description)}`,
 		"END:VEVENT",
 		"END:VCALENDAR",
 	]
