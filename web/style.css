@@ -518,6 +518,11 @@ button {
 	cursor: not-allowed;
 }
 
+/* Segnaposto per mantenere allineate le colonne di azioni */
+.btn-icon[aria-hidden="true"] {
+	visibility: hidden;
+}
+
 .btn-icon.danger:hover {
 	background: var(--no-soft);
 	color: var(--no-text);
@@ -653,7 +658,7 @@ button {
 }
 
 .avatar-stack .avatar+.avatar {
-	margin-left: -6px;
+	margin-left: -4px;
 }
 
 .date-tile {
@@ -716,12 +721,6 @@ button {
 	list-style: none;
 }
 
-@media (min-width: 900px) {
-	.event-list {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-}
-
 .event-card {
 	display: flex;
 	gap: var(--sp-4);
@@ -748,13 +747,6 @@ button {
 	min-width: 0;
 }
 
-.event-card-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--sp-3);
-}
-
 .event-card h3 {
 	overflow-wrap: anywhere;
 }
@@ -773,15 +765,12 @@ button {
 }
 
 .when {
-	flex: none;
-	color: var(--muted);
-	font-size: var(--fs-xs);
-	font-weight: 600;
 	white-space: nowrap;
 }
 
 .when.live {
 	color: var(--yes-text);
+	font-weight: 600;
 }
 
 .meta {
@@ -1055,10 +1044,12 @@ button {
 	color: var(--no-text);
 }
 
+/* minmax(0, 1fr): senza, la colonna si allarga al nome più lungo e il contenuto esce dalla card */
 .rows,
 .people,
 .user-list {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--sp-2);
 	margin: 0;
 	padding: 0;
@@ -1382,7 +1373,7 @@ input[type="checkbox"] {
 	cursor: not-allowed;
 }
 
-.disclosure {
+.card.disclosure {
 	padding: 0;
 }
 
@@ -1475,11 +1466,16 @@ input[type="checkbox"] {
 	margin-top: var(--sp-2);
 }
 
-.user-row {
+.card.user-row {
 	display: flex;
 	align-items: center;
 	gap: var(--sp-3);
 	padding: var(--sp-3) var(--sp-4);
+}
+
+/* Lo switch resta a sinistra, le icone a destra (anche quando la riga va a capo su mobile) */
+.user-row .switch {
+	margin-right: var(--sp-2);
 }
 
 .credentials {
@@ -1760,9 +1756,12 @@ dialog::backdrop {
 	}
 
 	.user-row .row-actions {
-		justify-content: space-between;
 		padding-top: var(--sp-3);
 		border-top: 1px solid var(--border);
+	}
+
+	.user-row .switch {
+		margin-right: auto;
 	}
 
 	.add-form,

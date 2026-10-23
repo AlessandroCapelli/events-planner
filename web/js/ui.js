@@ -226,8 +226,10 @@ export function avatar(name, seed = name, size = "") {
 			.map((word) => [...word][0] ?? "")
 			.join("")
 			.toUpperCase() || "?";
-	let hash = 0;
-	for (const c of String(seed)) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+	// FNV-1a: distribuisce bene le tonalità anche tra id molto simili.
+	let hash = 2166136261;
+	for (const c of String(seed))
+		hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
 	return html`<span
 		class="avatar ${size && `avatar-${size}`}"
 		style="--hue: ${hash % 360}"

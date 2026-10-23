@@ -345,7 +345,7 @@ async function viewEvents() {
 	}
 
 	return [
-		html`${pageHead(
+		html`<div class="page-narrow">${pageHead(
 			t("events.title"),
 			events.length
 				? tn("events.count", events.length)
@@ -357,24 +357,26 @@ async function viewEvents() {
 				>${icon("plus")}<span>${t("events.new")}</span></a
 			>`,
 		)}
-		${events.length
-			? groups.map(
-					(g) =>
-						html`<section class="day-group">
-							<h2 class="group-label">${g.label}</h2>
-							<ul class="event-list">
-								${g.events.map(eventCard)}
-							</ul>
-						</section>`,
-				)
-			: emptyState(
-					"calendar",
-					t("events.emptyTitle"),
-					t("events.empty"),
-					html`<a class="btn btn-primary" href="#/new"
-						>${icon("plus")}${t("events.new")}</a
-					>`,
-				)}`,
+		<div>
+			${events.length
+				? groups.map(
+						(g) =>
+							html`<section class="day-group">
+								<h2 class="group-label">${g.label}</h2>
+								<ul class="event-list">
+									${g.events.map(eventCard)}
+								</ul>
+							</section>`,
+					)
+				: emptyState(
+						"calendar",
+						t("events.emptyTitle"),
+						t("events.empty"),
+						html`<a class="btn btn-primary" href="#/new"
+							>${icon("plus")}${t("events.new")}</a
+						>`,
+					)}
+		</div></div>`,
 	];
 }
 
@@ -388,14 +390,14 @@ function eventCard(event) {
 		<a class="card event-card" href="#/event/${event.id}">
 			${dateTile(event.starts_at)}
 			<div class="event-card-body">
-				<div class="event-card-head">
-					<h3>${event.title}</h3>
-					<span class="when ${isLive(event.starts_at) && "live"}"
-						>${relative(event.starts_at)}</span
-					>
-				</div>
+				<h3>${event.title}</h3>
 				<div class="meta">
-					<span>${icon("clock")}${fmtTime(event.starts_at)}</span>
+					<span
+						>${icon("clock")}${fmtTime(event.starts_at)} ·
+						<span class="when ${isLive(event.starts_at) && "live"}"
+							>${relative(event.starts_at)}</span
+						></span
+					>
 					${event.location &&
 					html`<span
 						>${icon("pin")}<span class="truncate"
@@ -1196,12 +1198,9 @@ async function viewAdmin() {
 								>
 									${icon("key")}
 								</button>
-								${u.id !== me.id &&
-								deleteButton(
-									"deleteUser",
-									u.id,
-									u.display_name,
-								)}
+								${u.id === me.id
+									? html`<span class="btn-icon" aria-hidden="true"></span>`
+									: deleteButton("deleteUser", u.id, u.display_name)}
 							</div>
 						</li>`,
 				)}
