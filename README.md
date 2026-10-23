@@ -84,6 +84,14 @@ cp web/config.example.js web/config.js   # inserisci URL e chiave
 npx serve web
 ```
 
+### Calendario in Outlook
+
+- **File scaricato:** in Outlook sul web / nuovo Outlook, apri Calendario → Aggiungi calendario → Carica da file e seleziona il file `.ics`. L'importazione non si aggiorna automaticamente.
+- **Sincronizzazione:** nell'account dell'app premi Outlook e copia il link **HTTPS**. In Outlook scegli Calendario → Aggiungi calendario → Abbonati dal Web e incollalo. Il collegamento Apple usa invece `webcal:`.
+- La funzione `calendar` deve avere **Verify JWT disattivato** anche quando è pubblicata dalla dashboard. Il token personale nel link protegge il feed; il client calendario non invia un header Authorization. `supabase/config.toml` conserva questa impostazione per i deploy CLI.
+- Se Outlook rifiuta il link, aprilo in una finestra privata: deve restituire un calendario che inizia con `BEGIN:VCALENDAR`. Un errore 401 con `Missing authorization header` indica che Verify JWT è ancora attivo; un 404 può indicare un token non valido o una funzione non pubblicata. Dopo la disattivazione del controllo JWT, un token fittizio deve ricevere 404, non 401.
+- Gli aggiornamenti sono gestiti da Outlook e possono richiedere più di 24 ore.
+
 ## Sicurezza
 
 - Ogni tabella ha la RLS attiva; il ruolo `anon` non ha alcun permesso.

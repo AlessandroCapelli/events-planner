@@ -1,0 +1,5 @@
+project_id = "events-planner"
+
+# I client calendario non inviano JWT: il feed verifica il token personale nel link.
+[functions.calendar]
+verify_jwt = false

@@ -88,7 +88,10 @@ const dict = {
 		"calendar.hint":
 			"Aggiungi gli eventi che vedi al tuo calendario: si aggiornano da soli. Google li aggiorna ogni poche ore.",
 		"calendar.enable": "Attiva calendario",
-		"calendar.apple": "Apple / Outlook",
+		"calendar.apple": "Apple Calendar",
+		"calendar.outlookTitle": "Aggiungi a Outlook",
+		"calendar.outlookHint":
+			"In Outlook sul web o nel nuovo Outlook: Calendario → Aggiungi calendario → Abbonati dal Web. Incolla questo link HTTPS e conferma. Per il file .ics scaricato scegli invece Carica da file.",
 		"calendar.google": "Google Calendar",
 		"calendar.link": "Link da aggiungere a mano",
 		"calendar.private":
@@ -311,7 +314,10 @@ const dict = {
 		"calendar.hint":
 			"Add the events you can see to your calendar: they update on their own. Google refreshes them every few hours.",
 		"calendar.enable": "Turn on calendar",
-		"calendar.apple": "Apple / Outlook",
+		"calendar.apple": "Apple Calendar",
+		"calendar.outlookTitle": "Add to Outlook",
+		"calendar.outlookHint":
+			"In Outlook on the web or new Outlook: Calendar → Add calendar → Subscribe from web. Paste this HTTPS link and confirm. For a downloaded .ics file, choose Upload from file instead.",
 		"calendar.google": "Google Calendar",
 		"calendar.link": "Link to add manually",
 		"calendar.private":

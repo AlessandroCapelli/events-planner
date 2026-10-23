@@ -320,7 +320,26 @@ function passwordError(err, field = "password") {
 function toIcs(event) {
 	const day = (date) => toInput(date).slice(0, 10).replaceAll("-", "");
 	const text = (value) =>
-		value.replace(/[\\;,]/g, "\\$&").replace(/\r?\n/g, "\\n");
+		value.replace(/[\\;,]/g, "\\$&").replace(/\r\n|\r|\n/g, "\\n");
+	// RFC 5545: al massimo 75 byte per riga, senza dividere caratteri UTF-8.
+	const encoder = new TextEncoder();
+	const fold = (line) => {
+		const parts = [];
+		let current = "";
+		let bytes = 0;
+		for (const char of line) {
+			const size = encoder.encode(char).length;
+			if (bytes + size > (parts.length ? 74 : 75)) {
+				parts.push(current);
+				current = "";
+				bytes = 0;
+			}
+			current += char;
+			bytes += size;
+		}
+		parts.push(current);
+		return parts.join("\r\n ");
+	};
 	const start = new Date(event.starts_at);
 	const end = new Date(
 		start.getFullYear(),
@@ -333,23 +352,27 @@ function toIcs(event) {
 	]
 		.filter(Boolean)
 		.join("\n\n");
-	return [
-		"BEGIN:VCALENDAR",
-		"VERSION:2.0",
-		"PRODID:-//Events Planner//EN",
-		"BEGIN:VEVENT",
-		`UID:${event.id}@events-planner`,
-		`DTSTAMP:${new Date().toISOString().replace(/[-:]|\.\d{3}/g, "")}`,
-		`DTSTART;VALUE=DATE:${day(start)}`,
-		`DTEND;VALUE=DATE:${day(end)}`,
-		`SUMMARY:${text(event.title)}`,
-		event.location && `LOCATION:${text(event.location)}`,
-		`DESCRIPTION:${text(description)}`,
-		"END:VEVENT",
-		"END:VCALENDAR",
-	]
-		.filter(Boolean)
-		.join("\r\n");
+	return (
+		[
+			"BEGIN:VCALENDAR",
+			"VERSION:2.0",
+			"PRODID:-//Events Planner//EN",
+			"CALSCALE:GREGORIAN",
+			"BEGIN:VEVENT",
+			`UID:${event.id}@events-planner`,
+			`DTSTAMP:${new Date().toISOString().replace(/[-:]|\.\d{3}/g, "")}`,
+			`DTSTART;VALUE=DATE:${day(start)}`,
+			`DTEND;VALUE=DATE:${day(end)}`,
+			`SUMMARY:${text(event.title)}`,
+			event.location && `LOCATION:${text(event.location)}`,
+			`DESCRIPTION:${text(description)}`,
+			"END:VEVENT",
+			"END:VCALENDAR",
+		]
+			.filter(Boolean)
+			.map(fold)
+			.join("\r\n") + "\r\n"
+	);
 }
 
 const slug = (value) =>
@@ -1432,6 +1455,9 @@ async function viewAccount() {
 						<a class="btn" href="${webcalUrl}"
 							>${icon("calendarCheck")}${t("calendar.apple")}</a
 						>
+						<button class="btn" data-action="outlookCalendar">
+							${icon("calendarCheck")}Outlook
+						</button>
 						<a
 							class="btn"
 							href="https://calendar.google.com/calendar/r?cid=${encodeURIComponent(
@@ -1550,6 +1576,27 @@ async function viewAccount() {
 			${calendarCard}
 		</div>`,
 		{
+			outlookCalendar: () =>
+				ask({
+					title: t("calendar.outlookTitle"),
+					message: t("calendar.outlookHint"),
+					body: html`<div class="input-group">
+						<input
+							value="${feedUrl}"
+							readonly
+							aria-label="${t("calendar.link")}"
+						/>
+						<button
+							type="button"
+							class="btn"
+							data-copy="${feedUrl}"
+						>
+							${icon("copy")}<span>${t("share.copy")}</span>
+						</button>
+					</div>`,
+					confirm: t("common.close"),
+					cancel: null,
+				}),
 			enableCalendar: async () => {
 				await api.rotateCalendarToken();
 				await show(viewAccount);
