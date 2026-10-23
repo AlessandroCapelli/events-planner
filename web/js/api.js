@@ -17,15 +17,15 @@ const EVENT_DETAIL = `
   proposals(*, author:profiles!proposals_created_by_fkey(display_name), votes(user_id, value)),
   items(*, claimer:profiles!items_claimed_by_fkey(display_name))`;
 
-/** Invoca cb(userId | null) solo quando cambia l'utente loggato (ignora i refresh del token). */
+/** Invoca cb(user | null) solo quando cambia l'utente loggato (ignora i refresh del token). */
 export function onUserChange(cb) {
 	let current;
 	sb.auth.onAuthStateChange((_event, session) => {
-		const next = session?.user.id ?? null;
-		if (next === current) return;
-		current = next;
+		const user = session?.user ?? null;
+		if ((user?.id ?? null) === current) return;
+		current = user?.id ?? null;
 		// Differito: chiamare Supabase dentro questa callback può bloccare il lock di auth.
-		setTimeout(() => cb(next), 0);
+		setTimeout(() => cb(user), 0);
 	});
 }
 
@@ -36,7 +36,7 @@ export const changePassword = (password) =>
 	sb.auth.updateUser({ password }).then(unwrap);
 
 export const getProfile = (id) =>
-	sb.from("profiles").select("*").eq("id", id).single().then(unwrap);
+	sb.from("profiles").select("*").eq("id", id).maybeSingle().then(unwrap);
 export const updateProfile = (id, display_name) =>
 	sb.from("profiles").update({ display_name }).eq("id", id).then(unwrap);
 
@@ -44,7 +44,7 @@ export const listEvents = () =>
 	sb
 		.from("events")
 		.select(
-			"id, title, starts_at, location, responses(user_id, status, guests)",
+			"id, title, starts_at, location, responses(user_id, status, guests, profile:profiles(display_name))",
 		)
 		.order("starts_at")
 		.then(unwrap);
@@ -87,8 +87,14 @@ export const vote = (proposal_id, user_id, value) =>
 
 export const addItem = (event_id, label) =>
 	sb.from("items").insert({ event_id, label }).then(unwrap);
+/** Restituisce le righe aggiornate: vuoto se qualcun altro l'ha già prenotato (bloccato dalla RLS). */
 export const claimItem = (id, user_id) =>
-	sb.from("items").update({ claimed_by: user_id }).eq("id", id).then(unwrap);
+	sb
+		.from("items")
+		.update({ claimed_by: user_id })
+		.eq("id", id)
+		.select("id")
+		.then(unwrap);
 export const deleteItem = (id) =>
 	sb.from("items").delete().eq("id", id).then(unwrap);
 

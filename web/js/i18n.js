@@ -2,141 +2,289 @@ const dict = {
 	it: {
 		"nav.events": "Eventi",
 		"nav.admin": "Utenti",
+		"nav.account": "Il mio account",
+		"nav.menu": "Menu utente",
+		"nav.switchLang": "English",
 		"nav.logout": "Esci",
-		"login.title": "Accedi",
+		"login.title": "Bentornato",
+		"login.subtitle": "Accedi per vedere i prossimi eventi del gruppo.",
 		"login.email": "Email",
 		"login.password": "Password",
-		"login.submit": "Entra",
+		"login.submit": "Accedi",
 		"login.hint":
-			"Gli account vengono creati dall'amministratore del gruppo.",
+			"Non hai un account? Chiedilo all'amministratore del gruppo.",
+		"login.invalid": "Email o password non corretti.",
 		"events.title": "Prossimi eventi",
+		"events.subtitle": "Tutto quello che il gruppo ha in programma.",
+		"events.count.one": "{n} evento in programma",
+		"events.count.other": "{n} eventi in programma",
 		"events.new": "Nuovo evento",
-		"events.empty": "Nessun evento in programma. Creane uno!",
-		"event.back": "← Eventi",
-		"event.by": "Creato da {name}",
+		"events.emptyTitle": "Nessun evento in programma",
+		"events.empty":
+			"Crea il primo evento e fai sapere al gruppo cosa bolle in pentola.",
+		"date.today": "Oggi",
+		"date.tomorrow": "Domani",
+		"date.live": "In corso",
+		"event.back": "Eventi",
+		"event.backToEvent": "Torna all'evento",
+		"event.by": "Organizzato da {name}",
 		"event.edit": "Modifica",
+		"event.openMap": "Apri in Maps",
+		"event.addToCalendar": "Aggiungi al calendario",
 		"event.confirmDelete": "Eliminare questo evento?",
-		"event.notFound": "Evento non trovato o già concluso.",
-		"rsvp.title": "Ci sei?",
+		"event.confirmDeleteHint":
+			"Verranno eliminate anche risposte, proposte e lista delle cose da portare.",
+		"event.deleted": "Evento eliminato.",
+		"event.notFound": "Evento non disponibile",
+		"event.notFoundHint":
+			"Potrebbe essere stato eliminato o essere già concluso.",
+		"rsvp.title": "Partecipi?",
 		"rsvp.yes": "Ci sono",
 		"rsvp.maybe": "Forse",
 		"rsvp.no": "Non ci sono",
-		"rsvp.guests": "Persone con te",
+		"rsvp.none": "Rispondi",
+		"rsvp.pending":
+			"Non hai ancora risposto: fai sapere al gruppo se ci sei.",
+		"rsvp.bring": "Porti qualcuno?",
+		"rsvp.total.one": "Vieni da solo",
+		"rsvp.total.other": "In totale siete in {n}",
+		"rsvp.less": "Una persona in meno",
+		"rsvp.more": "Una persona in più",
 		"people.title": "Partecipanti",
-		"people.summary":
-			"{yes} ci sono · {maybe} forse · {no} non ci sono (accompagnatori inclusi)",
-		"people.empty": "Ancora nessuna risposta.",
+		"people.going.one": "{n} partecipa",
+		"people.going.other": "{n} partecipano",
+		"people.nobody": "Ancora nessuno",
+		"people.hint": "I numeri includono gli accompagnatori.",
+		"people.empty": "Ancora nessuna risposta. Sii il primo!",
 		"proposals.title": "Proposte",
-		"proposals.hint": "Proponi una data e/o un luogo alternativi.",
-		"proposals.empty": "Nessuna proposta.",
-		"proposals.location": "Luogo alternativo",
+		"proposals.subtitle":
+			"Suggerisci un'altra data o un altro luogo e vota quelli degli altri.",
+		"proposals.by": "Proposta da {name}",
+		"proposals.date": "Data e ora",
+		"proposals.location": "Luogo",
+		"proposals.locationPlaceholder": "es. Pizzeria da Gino",
 		"proposals.add": "Proponi",
+		"proposals.hint": "Indica almeno una data o un luogo.",
+		"proposals.vote": "Vota la proposta",
+		"proposals.up": "Mi piace",
+		"proposals.down": "Non mi piace",
 		"proposals.adopt": "Adotta",
-		"proposals.confirmAdopt": "Aggiornare l'evento con questa proposta?",
+		"proposals.adoptHint": "Aggiorna l'evento con questa proposta",
+		"proposals.confirmAdopt": "Adottare questa proposta?",
+		"proposals.confirmAdoptHint":
+			"Data e/o luogo dell'evento verranno aggiornati e la proposta rimossa.",
+		"proposals.adopted": "Evento aggiornato.",
 		"items.title": "Cose da portare",
-		"items.empty": "Ancora niente in lista.",
-		"items.placeholder": "es. bibite, chitarra…",
+		"items.subtitle": "Aggiungi cosa serve e prenota quello che porti tu.",
+		"items.placeholder": "es. bibite, chitarra, carbonella…",
 		"items.add": "Aggiungi",
 		"items.claim": "Lo porto io",
 		"items.unclaim": "Rinuncio",
-		"items.claimedBy": "porta {name}",
+		"items.free": "Ancora libero",
+		"items.yours": "Lo porti tu",
+		"items.claimedBy": "Lo porta {name}",
+		"items.taken": "Qualcuno l'ha appena prenotato.",
 		"form.newTitle": "Nuovo evento",
 		"form.editTitle": "Modifica evento",
 		"form.title": "Titolo",
+		"form.titlePlaceholder": "es. Cena di fine mese",
 		"form.startsAt": "Data e ora",
 		"form.location": "Luogo",
+		"form.locationPlaceholder": "es. Piazza Duomo, Milano",
 		"form.description": "Descrizione",
+		"form.descriptionPlaceholder": "Dettagli, costi, cosa sapere…",
+		"form.create": "Crea evento",
+		"form.created": "Evento creato.",
+		"account.title": "Il mio account",
+		"account.profile": "Profilo",
+		"account.name": "Nome visualizzato",
+		"account.security": "Password",
+		"account.password": "Nuova password",
+		"account.passwordConfirm": "Conferma password",
+		"account.passwordMismatch": "Le password non coincidono.",
+		"account.changePassword": "Cambia password",
+		"account.passwordChanged": "Password aggiornata.",
+		"account.language": "Lingua",
 		"admin.title": "Utenti",
-		"admin.create": "Nuovo utente",
+		"admin.count.one": "{n} membro nel gruppo",
+		"admin.count.other": "{n} membri nel gruppo",
+		"admin.create": "Aggiungi un membro",
 		"admin.name": "Nome",
 		"admin.password": "Password iniziale",
+		"admin.generate": "Genera password",
 		"admin.isAdmin": "Admin",
+		"admin.makeAdmin": "Può gestire gli utenti (admin)",
 		"admin.add": "Crea utente",
-		"admin.created": "Utente creato.",
+		"admin.createdTitle": "Utente creato",
+		"admin.createdMessage":
+			"Condividi queste credenziali con {name}: potrà cambiare la password dal suo account.",
+		"admin.link": "Link",
+		"admin.copy": "Copia credenziali",
 		"admin.resetPassword": "Reimposta password",
-		"admin.newPassword": "Nuova password per {name} (min. 8 caratteri):",
-		"admin.confirmDelete":
-			"Eliminare {name}? Verranno rimosse anche le sue risposte.",
-		"account.title": "Il tuo account",
-		"account.name": "Nome visualizzato",
-		"account.password": "Nuova password",
-		"account.changePassword": "Cambia password",
+		"admin.resetTitle": "Nuova password per {name}",
+		"admin.resetHint":
+			"Comunicala all'utente: potrà cambiarla dal suo account.",
+		"admin.newPassword": "Nuova password",
+		"admin.passwordUpdated": "Password aggiornata.",
+		"admin.confirmDelete": "Eliminare {name}?",
+		"admin.confirmDeleteHint":
+			"Verranno rimosse anche le sue risposte e i suoi voti. L'operazione non è reversibile.",
+		"admin.deleted": "Utente eliminato.",
+		"error.title": "Qualcosa è andato storto",
 		"common.save": "Salva",
 		"common.saved": "Salvato.",
 		"common.cancel": "Annulla",
+		"common.confirm": "Conferma",
+		"common.done": "Fatto",
 		"common.delete": "Elimina",
+		"common.copied": "Copiato!",
+		"common.optional": "(facoltativo)",
+		"common.you": "tu",
+		"common.retry": "Riprova",
 		"common.loading": "Caricamento…",
-		"common.error": "Errore: {msg}",
 		"common.missingConfig":
 			"Configurazione mancante: crea web/config.js partendo da web/config.example.js.",
 	},
 	en: {
 		"nav.events": "Events",
 		"nav.admin": "Users",
+		"nav.account": "My account",
+		"nav.menu": "User menu",
+		"nav.switchLang": "Italiano",
 		"nav.logout": "Log out",
-		"login.title": "Sign in",
+		"login.title": "Welcome back",
+		"login.subtitle": "Sign in to see what the group has planned.",
 		"login.email": "Email",
 		"login.password": "Password",
 		"login.submit": "Sign in",
-		"login.hint": "Accounts are created by the group administrator.",
+		"login.hint": "No account yet? Ask the group administrator.",
+		"login.invalid": "Wrong email or password.",
 		"events.title": "Upcoming events",
+		"events.subtitle": "Everything the group has planned.",
+		"events.count.one": "{n} upcoming event",
+		"events.count.other": "{n} upcoming events",
 		"events.new": "New event",
-		"events.empty": "No events planned. Create one!",
-		"event.back": "← Events",
-		"event.by": "Created by {name}",
+		"events.emptyTitle": "Nothing planned yet",
+		"events.empty":
+			"Create the first event and let the group know what's coming up.",
+		"date.today": "Today",
+		"date.tomorrow": "Tomorrow",
+		"date.live": "Happening now",
+		"event.back": "Events",
+		"event.backToEvent": "Back to event",
+		"event.by": "Organised by {name}",
 		"event.edit": "Edit",
+		"event.openMap": "Open in Maps",
+		"event.addToCalendar": "Add to calendar",
 		"event.confirmDelete": "Delete this event?",
-		"event.notFound": "Event not found or already over.",
-		"rsvp.title": "Are you in?",
+		"event.confirmDeleteHint":
+			"Responses, proposals and the bring list will be deleted too.",
+		"event.deleted": "Event deleted.",
+		"event.notFound": "Event not available",
+		"event.notFoundHint": "It may have been deleted or already be over.",
+		"rsvp.title": "Are you coming?",
 		"rsvp.yes": "I'm in",
 		"rsvp.maybe": "Maybe",
 		"rsvp.no": "Can't make it",
-		"rsvp.guests": "People with you",
+		"rsvp.none": "Reply",
+		"rsvp.pending": "You haven't replied yet: let the group know.",
+		"rsvp.bring": "Bringing anyone?",
+		"rsvp.total.one": "Just you",
+		"rsvp.total.other": "{n} of you in total",
+		"rsvp.less": "One person less",
+		"rsvp.more": "One person more",
 		"people.title": "Attendees",
-		"people.summary":
-			"{yes} in · {maybe} maybe · {no} out (guests included)",
-		"people.empty": "No responses yet.",
+		"people.going.one": "{n} going",
+		"people.going.other": "{n} going",
+		"people.nobody": "Nobody yet",
+		"people.hint": "Numbers include guests.",
+		"people.empty": "No replies yet. Be the first!",
 		"proposals.title": "Proposals",
-		"proposals.hint": "Suggest an alternative date and/or place.",
-		"proposals.empty": "No proposals.",
-		"proposals.location": "Alternative place",
+		"proposals.subtitle":
+			"Suggest another date or place and vote on the others.",
+		"proposals.by": "Proposed by {name}",
+		"proposals.date": "Date and time",
+		"proposals.location": "Place",
+		"proposals.locationPlaceholder": "e.g. Joe's Pizza",
 		"proposals.add": "Propose",
+		"proposals.hint": "Enter at least a date or a place.",
+		"proposals.vote": "Vote on the proposal",
+		"proposals.up": "Upvote",
+		"proposals.down": "Downvote",
 		"proposals.adopt": "Adopt",
-		"proposals.confirmAdopt": "Update the event with this proposal?",
+		"proposals.adoptHint": "Update the event with this proposal",
+		"proposals.confirmAdopt": "Adopt this proposal?",
+		"proposals.confirmAdoptHint":
+			"The event date and/or place will be updated and the proposal removed.",
+		"proposals.adopted": "Event updated.",
 		"items.title": "What to bring",
-		"items.empty": "Nothing on the list yet.",
-		"items.placeholder": "e.g. drinks, guitar…",
+		"items.subtitle": "Add what's needed and claim what you'll bring.",
+		"items.placeholder": "e.g. drinks, guitar, charcoal…",
 		"items.add": "Add",
 		"items.claim": "I'll bring it",
-		"items.unclaim": "Drop",
-		"items.claimedBy": "{name} brings it",
+		"items.unclaim": "Drop it",
+		"items.free": "Still free",
+		"items.yours": "You're bringing it",
+		"items.claimedBy": "{name} is bringing it",
+		"items.taken": "Someone just claimed it.",
 		"form.newTitle": "New event",
 		"form.editTitle": "Edit event",
 		"form.title": "Title",
+		"form.titlePlaceholder": "e.g. End of month dinner",
 		"form.startsAt": "Date and time",
 		"form.location": "Place",
+		"form.locationPlaceholder": "e.g. Central Park, New York",
 		"form.description": "Description",
+		"form.descriptionPlaceholder": "Details, costs, things to know…",
+		"form.create": "Create event",
+		"form.created": "Event created.",
+		"account.title": "My account",
+		"account.profile": "Profile",
+		"account.name": "Display name",
+		"account.security": "Password",
+		"account.password": "New password",
+		"account.passwordConfirm": "Confirm password",
+		"account.passwordMismatch": "Passwords don't match.",
+		"account.changePassword": "Change password",
+		"account.passwordChanged": "Password updated.",
+		"account.language": "Language",
 		"admin.title": "Users",
-		"admin.create": "New user",
+		"admin.count.one": "{n} group member",
+		"admin.count.other": "{n} group members",
+		"admin.create": "Add a member",
 		"admin.name": "Name",
 		"admin.password": "Initial password",
+		"admin.generate": "Generate password",
 		"admin.isAdmin": "Admin",
+		"admin.makeAdmin": "Can manage users (admin)",
 		"admin.add": "Create user",
-		"admin.created": "User created.",
+		"admin.createdTitle": "User created",
+		"admin.createdMessage":
+			"Share these credentials with {name}: they can change the password from their account.",
+		"admin.link": "Link",
+		"admin.copy": "Copy credentials",
 		"admin.resetPassword": "Reset password",
-		"admin.newPassword": "New password for {name} (min. 8 characters):",
-		"admin.confirmDelete":
-			"Delete {name}? Their responses will be removed too.",
-		"account.title": "Your account",
-		"account.name": "Display name",
-		"account.password": "New password",
-		"account.changePassword": "Change password",
+		"admin.resetTitle": "New password for {name}",
+		"admin.resetHint":
+			"Share it with the user: they can change it from their account.",
+		"admin.newPassword": "New password",
+		"admin.passwordUpdated": "Password updated.",
+		"admin.confirmDelete": "Delete {name}?",
+		"admin.confirmDeleteHint":
+			"Their replies and votes will be removed too. This can't be undone.",
+		"admin.deleted": "User deleted.",
+		"error.title": "Something went wrong",
 		"common.save": "Save",
 		"common.saved": "Saved.",
 		"common.cancel": "Cancel",
+		"common.confirm": "Confirm",
+		"common.done": "Done",
 		"common.delete": "Delete",
+		"common.copied": "Copied!",
+		"common.optional": "(optional)",
+		"common.you": "you",
+		"common.retry": "Retry",
 		"common.loading": "Loading…",
-		"common.error": "Error: {msg}",
 		"common.missingConfig":
 			"Missing configuration: create web/config.js from web/config.example.js.",
 	},
@@ -174,15 +322,85 @@ export const t = (key, vars = {}) =>
 		(_, name) => vars[name] ?? "",
 	);
 
+/** Traduzione con plurale: usa le chiavi `<key>.one` / `<key>.other`. */
+export const tn = (key, n, vars = {}) =>
+	t(
+		`${key}.${new Intl.PluralRules(current).select(n) === "one" ? "one" : "other"}`,
+		{ n, ...vars },
+	);
+
+// ── Date ─────────────────────────────────────────────────────────────────
+
+const fmt = (options) => new Intl.DateTimeFormat(current, options);
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/** Giorni di calendario tra oggi e la data (0 = oggi, 1 = domani, -1 = ieri). */
+const dayDiff = (date) =>
+	Math.round((startOfDay(date) - startOfDay(new Date())) / 864e5);
+const yearIfOther = (date) =>
+	date.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {};
+
+export const isLive = (iso) => new Date(iso) <= new Date();
+
+export const fmtTime = (iso) =>
+	fmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+
 export function fmtDate(iso) {
 	const date = new Date(iso);
-	const otherYear = date.getFullYear() !== new Date().getFullYear();
-	return new Intl.DateTimeFormat(current, {
+	return fmt({
 		weekday: "short",
 		day: "numeric",
 		month: "short",
-		...(otherYear && { year: "numeric" }),
+		...yearIfOther(date),
 		hour: "2-digit",
 		minute: "2-digit",
 	}).format(date);
+}
+
+export function fmtLongDate(iso) {
+	const date = new Date(iso);
+	return capitalize(
+		fmt({
+			weekday: "long",
+			day: "numeric",
+			month: "long",
+			...yearIfOther(date),
+		}).format(date),
+	);
+}
+
+/** Parti per il riquadro data: mese e giorno della settimana abbreviati, numero del giorno. */
+export function dayParts(iso) {
+	const date = new Date(iso);
+	return {
+		month: fmt({ month: "short" }).format(date).replace(".", ""),
+		day: date.getDate(),
+		weekday: fmt({ weekday: "short" }).format(date).replace(".", ""),
+	};
+}
+
+/** Intestazione del gruppo nella lista: Oggi, Domani, oppure mese e anno. */
+export function groupLabel(iso) {
+	const date = new Date(iso);
+	const diff = dayDiff(date);
+	if (diff <= 0) return t("date.today");
+	if (diff === 1) return t("date.tomorrow");
+	return capitalize(fmt({ month: "long", year: "numeric" }).format(date));
+}
+
+/** "tra 2 ore", "domani", "tra 3 giorni"… oppure "In corso" se già iniziato. */
+export function relative(iso) {
+	const date = new Date(iso);
+	if (isLive(iso)) return t("date.live");
+	const rtf = new Intl.RelativeTimeFormat(current, { numeric: "auto" });
+	const days = dayDiff(date);
+	if (days === 0) {
+		const minutes = Math.max(1, Math.round((date - Date.now()) / 6e4));
+		return minutes < 60
+			? rtf.format(minutes, "minute")
+			: rtf.format(Math.round(minutes / 60), "hour");
+	}
+	if (days < 7) return rtf.format(days, "day");
+	if (days < 30) return rtf.format(Math.round(days / 7), "week");
+	return rtf.format(Math.round(days / 30), "month");
 }

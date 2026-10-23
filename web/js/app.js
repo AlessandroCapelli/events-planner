@@ -1,61 +1,150 @@
 import * as api from "./api.js";
-import { fmtDate, lang, setLang, t } from "./i18n.js";
-import { fromInput, html, mount, notify, toInput } from "./ui.js";
+import {
+	dayParts,
+	fmtDate,
+	fmtLongDate,
+	fmtTime,
+	groupLabel,
+	isLive,
+	lang,
+	relative,
+	setLang,
+	t,
+	tn,
+} from "./i18n.js";
+import {
+	ask,
+	avatar,
+	downloadFile,
+	fromInput,
+	html,
+	icon,
+	mount,
+	notify,
+	randomPassword,
+	toInput,
+} from "./ui.js";
 
 const app = document.getElementById("app");
 const nav = document.getElementById("nav");
 const STATUSES = ["yes", "maybe", "no"];
+const STATUS_ICON = { yes: "check", maybe: "help", no: "x" };
+const MAX_GUESTS = 20;
+const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
+const NOT_BLANK = ".*\\S.*";
 
-/** Profilo dell'utente loggato, o null. */
+/** Profilo dell'utente loggato (con email), o null. */
 let me = null;
+/** Contatore di navigazione: scarta le viste caricate dopo che l'utente ha già cambiato pagina. */
+let seq = 0;
 
 const routes = [
 	[/^\/$/, viewEvents],
 	[/^\/new$/, () => viewEventForm()],
-	[/^\/event\/([\w-]+)$/, viewEvent],
-	[/^\/event\/([\w-]+)\/edit$/, viewEventForm],
+	[new RegExp(`^/event/${UUID}$`), viewEvent],
+	[new RegExp(`^/event/${UUID}/edit$`), viewEventForm],
 	[/^\/account$/, viewAccount],
 	[/^\/admin$/, viewAdmin],
 ];
 
+async function show(view, ...args) {
+	const current = ++seq;
+	let result;
+	try {
+		result = await view(...args);
+	} catch (err) {
+		result = [errorState(err.message)];
+	}
+	if (current === seq && result) mount(app, ...result);
+}
+
 async function render() {
 	if (!api.configured)
-		return void (app.textContent = t("common.missingConfig"));
+		return void mount(app, errorState(t("common.missingConfig")));
 	renderNav();
-	if (!me) return viewLogin();
+	if (!me) return show(viewLogin);
 
 	const path = location.hash.slice(1) || "/";
 	const route = routes.find(([re]) => re.test(path));
 	if (!route) return void (location.hash = "#/");
 
-	app.innerHTML = html`<p class="muted">${t("common.loading")}</p>`;
-	try {
-		await route[1](...path.match(route[0]).slice(1));
-	} catch (err) {
-		app.innerHTML = html`<p class="error">
-			${t("common.error", { msg: err.message })}
-		</p>`;
-	}
+	app.innerHTML = skeleton();
+	window.scrollTo(0, 0);
+	await show(route[1], ...path.match(route[0]).slice(1));
 }
 
 function renderNav() {
-	const other = lang() === "it" ? "en" : "it";
+	const path = location.hash.slice(1) || "/";
+	const onEvents =
+		path === "/" || path === "/new" || path.startsWith("/event/");
+	const navLink = (href, label, name, active) =>
+		html`<a
+			class="nav-link ${active && "active"}"
+			href="${href}"
+			${active && html`aria-current="page"`}
+		>
+			${icon(name)}<span>${label}</span></a
+		>`;
+
 	mount(
 		nav,
-		html` ${me &&
-			html` <a href="#/">${t("nav.events")}</a>
-				${me.is_admin && html`<a href="#/admin">${t("nav.admin")}</a>`}
-				<a href="#/account">${me.display_name}</a>`}
-			<button class="link" data-action="lang" data-lang="${other}">
-				${other.toUpperCase()}
-			</button>
-			${me &&
-			html`<button class="link" data-action="logout">
-				${t("nav.logout")}
-			</button>`}`,
+		me
+			? html` <div class="nav-links">
+						${navLink("#/", t("nav.events"), "calendar", onEvents)}
+						${me.is_admin &&
+						navLink(
+							"#/admin",
+							t("nav.admin"),
+							"users",
+							path === "/admin",
+						)}
+					</div>
+					<details class="menu">
+						<summary
+							class="menu-trigger"
+							aria-label="${t("nav.menu")}"
+						>
+							${avatar(me.display_name, me.id)}
+						</summary>
+						<div class="menu-panel">
+							<div class="menu-head">
+								${avatar(me.display_name, me.id, "lg")}
+								<div class="grow">
+									<strong class="truncate"
+										>${me.display_name}</strong
+									>
+									<div class="muted small truncate">
+										${me.email}
+									</div>
+								</div>
+							</div>
+							<a class="menu-item mobile-only" href="#/"
+								>${icon("calendar")}${t("nav.events")}</a
+							>
+							${me.is_admin &&
+							html`<a class="menu-item mobile-only" href="#/admin"
+								>${icon("users")}${t("nav.admin")}</a
+							>`}
+							<a class="menu-item" href="#/account"
+								>${icon("user")}${t("nav.account")}</a
+							>
+							<button class="menu-item" data-action="lang">
+								${icon("globe")}${t("nav.switchLang")}
+							</button>
+							<button
+								class="menu-item danger"
+								data-action="logout"
+							>
+								${icon("logout")}${t("nav.logout")}
+							</button>
+						</div>
+					</details>`
+			: html`<button class="btn btn-ghost btn-sm" data-action="lang">
+					${icon("globe")}${t("nav.switchLang")}
+				</button>`,
 		{
-			lang: (data) => {
-				setLang(data.lang);
+			lang: () => {
+				setLang(lang() === "it" ? "en" : "it");
 				render();
 			},
 			logout: () => api.signOut(),
@@ -63,7 +152,22 @@ function renderNav() {
 	);
 }
 
-// Somma le persone per stato, contando anche gli accompagnatori di chi viene o forse viene.
+// Chiude il menu utente cliccando fuori, su una voce o premendo Esc.
+document.addEventListener("click", (e) => {
+	for (const menu of document.querySelectorAll("details.menu[open]")) {
+		if (!menu.contains(e.target) || e.target.closest(".menu-item"))
+			menu.open = false;
+	}
+});
+document.addEventListener("keydown", (e) => {
+	if (e.key !== "Escape") return;
+	for (const menu of document.querySelectorAll("details.menu[open]"))
+		menu.open = false;
+});
+
+// ── Helper ───────────────────────────────────────────────────────────────
+
+/** Persone per stato, contando anche gli accompagnatori di chi viene o forse viene. */
 const tally = (responses) =>
 	responses.reduce(
 		(sum, r) => {
@@ -75,68 +179,236 @@ const tally = (responses) =>
 
 const score = (proposal) => proposal.votes.reduce((sum, v) => sum + v.value, 0);
 
+const byName = (a, b) =>
+	(a.profile?.display_name ?? "").localeCompare(
+		b.profile?.display_name ?? "",
+	);
+
+const skeleton = () =>
+	html` <div
+		class="skeleton-page"
+		aria-busy="true"
+		aria-label="${t("common.loading")}"
+	>
+		<div class="skeleton skeleton-title"></div>
+		${[1, 2, 3].map(() => html`<div class="skeleton skeleton-card"></div>`)}
+	</div>`;
+
+const emptyState = (name, title, text, action) =>
+	html` <div class="empty">
+		<div class="empty-icon">${icon(name)}</div>
+		<h2>${title}</h2>
+		${text && html`<p class="muted">${text}</p>`} ${action}
+	</div>`;
+
+const errorState = (message) =>
+	emptyState(
+		"alert",
+		t("error.title"),
+		message,
+		html`<button class="btn" onclick="location.reload()">
+			${icon("refresh")}${t("common.retry")}
+		</button>`,
+	);
+
+const dateTile = (iso, size = "") => {
+	const { weekday, day, month } = dayParts(iso);
+	return html`<div class="date-tile ${size}" aria-hidden="true">
+		<span>${month}</span><strong>${day}</strong><span>${weekday}</span>
+	</div>`;
+};
+
+const avatarStack = (responses, max = 4) =>
+	html` <span class="avatar-stack">
+		${responses
+			.slice(0, max)
+			.map((r) => avatar(r.profile?.display_name, r.user_id, "sm"))}
+		${responses.length > max &&
+		html`<span class="avatar avatar-sm more"
+			>+${responses.length - max}</span
+		>`}
+	</span>`;
+
+const statusPill = (status) =>
+	html`<span class="pill ${status}"
+		>${icon(STATUS_ICON[status])}${t(`rsvp.${status}`)}</span
+	>`;
+
+function toIcs(event) {
+	const stamp = (date) =>
+		date
+			.toISOString()
+			.replace(/[-:]/g, "")
+			.replace(/\.\d{3}/, "");
+	const text = (value) =>
+		value.replace(/[\\;,]/g, "\\$&").replace(/\r?\n/g, "\\n");
+	const start = new Date(event.starts_at);
+	return [
+		"BEGIN:VCALENDAR",
+		"VERSION:2.0",
+		"PRODID:-//Events Planner//EN",
+		"BEGIN:VEVENT",
+		`UID:${event.id}@events-planner`,
+		`DTSTAMP:${stamp(new Date())}`,
+		`DTSTART:${stamp(start)}`,
+		`DTEND:${stamp(new Date(start.getTime() + 2 * 36e5))}`,
+		`SUMMARY:${text(event.title)}`,
+		event.location && `LOCATION:${text(event.location)}`,
+		event.description && `DESCRIPTION:${text(event.description)}`,
+		"END:VEVENT",
+		"END:VCALENDAR",
+	]
+		.filter(Boolean)
+		.join("\r\n");
+}
+
+const slug = (value) =>
+	value
+		.normalize("NFD")
+		.replace(/[̀-ͯ]/g, "")
+		.replace(/[^\w]+/g, "-")
+		.replace(/^-|-$/g, "")
+		.toLowerCase() || "event";
+
 // ── Viste ────────────────────────────────────────────────────────────────
+// Ogni vista restituisce [markup, actions] da montare, oppure undefined se ha già rediretto.
 
 function viewLogin() {
-	mount(
-		app,
-		html` <form class="card stack narrow" data-submit="login">
-			<h1>${t("login.title")}</h1>
-			<label
-				>${t("login.email")}<input
-					name="email"
-					type="email"
-					autocomplete="username"
-					required
-			/></label>
-			<label
-				>${t("login.password")}<input
-					name="password"
-					type="password"
-					autocomplete="current-password"
-					required
-			/></label>
-			<button class="btn primary">${t("login.submit")}</button>
-			<p class="muted small">${t("login.hint")}</p>
-		</form>`,
+	return [
+		html` <div class="auth">
+			<form class="card auth-card" data-submit="login">
+				<div class="auth-logo">${icon("calendar")}</div>
+				<div>
+					<h1>${t("login.title")}</h1>
+					<p class="muted">${t("login.subtitle")}</p>
+				</div>
+				<label class="field">
+					<span>${t("login.email")}</span>
+					<input
+						name="email"
+						type="email"
+						autocomplete="username"
+						inputmode="email"
+						required
+					/>
+				</label>
+				<label class="field">
+					<span>${t("login.password")}</span>
+					<input
+						name="password"
+						type="password"
+						autocomplete="current-password"
+						required
+					/>
+				</label>
+				<p class="form-error" role="alert" hidden></p>
+				<button class="btn btn-primary btn-block">
+					${t("login.submit")}
+				</button>
+				<p class="muted small center">${t("login.hint")}</p>
+			</form>
+		</div>`,
 		{
-			login: ({ email, password }) => api.signIn(email, password),
+			login: async ({ email, password }, form) => {
+				const error = form.querySelector(".form-error");
+				error.hidden = true;
+				try {
+					await api.signIn(email.trim(), password);
+				} catch (err) {
+					error.textContent =
+						err.status === 400 ? t("login.invalid") : err.message;
+					error.hidden = false;
+				}
+			},
 		},
-	);
+	];
 }
 
 async function viewEvents() {
 	const events = await api.listEvents();
-	mount(
-		app,
-		html` <div class="row">
-				<h1>${t("events.title")}</h1>
-				<a class="btn primary" href="#/new">${t("events.new")}</a>
-			</div>
+	const groups = [];
+	for (const event of events) {
+		const label = groupLabel(event.starts_at);
+		if (groups.at(-1)?.label !== label) groups.push({ label, events: [] });
+		groups.at(-1).events.push(event);
+	}
+
+	return [
+		html` <header class="page-head">
+				<div>
+					<h1>${t("events.title")}</h1>
+					<p class="muted">
+						${events.length
+							? tn("events.count", events.length)
+							: t("events.subtitle")}
+					</p>
+				</div>
+				<a
+					class="btn btn-primary fab"
+					href="#/new"
+					aria-label="${t("events.new")}"
+					>${icon("plus")}<span>${t("events.new")}</span></a
+				>
+			</header>
 			${events.length
-				? html`<ul class="cards">
-						${events.map(eventCard)}
-					</ul>`
-				: html`<p class="muted">${t("events.empty")}</p>`}`,
-	);
+				? groups.map(
+						(g) =>
+							html` <section class="day-group">
+								<h2 class="group-label">${g.label}</h2>
+								<ul class="event-list">
+									${g.events.map(eventCard)}
+								</ul>
+							</section>`,
+					)
+				: emptyState(
+						"calendar",
+						t("events.emptyTitle"),
+						t("events.empty"),
+						html`<a class="btn btn-primary" href="#/new"
+							>${icon("plus")}${t("events.new")}</a
+						>`,
+					)}`,
+	];
 }
 
 function eventCard(event) {
 	const mine = event.responses.find((r) => r.user_id === me.id);
+	const going = event.responses
+		.filter((r) => r.status === "yes")
+		.sort(byName);
 	const count = tally(event.responses);
 	return html` <li>
-		<a class="card" href="#/event/${event.id}">
-			<strong>${event.title}</strong>
-			<span class="muted"
-				>${fmtDate(event.starts_at)}${event.location &&
-				` · ${event.location}`}</span
-			>
-			<div class="small">
-				✓ ${count.yes} · ? ${count.maybe}
-				${mine &&
-				html`<span class="badge ${mine.status}"
-					>${t(`rsvp.${mine.status}`)}</span
-				>`}
+		<a class="card event-card" href="#/event/${event.id}">
+			${dateTile(event.starts_at)}
+			<div class="event-card-body">
+				<div class="event-card-head">
+					<h3>${event.title}</h3>
+					<span class="when ${isLive(event.starts_at) && "live"}"
+						>${relative(event.starts_at)}</span
+					>
+				</div>
+				<div class="meta">
+					<span>${icon("clock")}${fmtTime(event.starts_at)}</span>
+					${event.location &&
+					html`<span
+						>${icon("pin")}<span class="truncate"
+							>${event.location}</span
+						></span
+					>`}
+				</div>
+				<div class="event-card-foot">
+					${going.length > 0 && avatarStack(going)}
+					<span class="muted small"
+						>${count.yes
+							? tn("people.going", count.yes)
+							: t("people.nobody")}</span
+					>
+					${mine
+						? statusPill(mine.status)
+						: html`<span class="pill pending"
+								>${t("rsvp.none")}</span
+							>`}
+				</div>
 			</div>
 		</a>
 	</li>`;
@@ -145,241 +417,426 @@ function eventCard(event) {
 async function viewEvent(id) {
 	const event = await api.getEvent(id);
 	if (!event) {
-		return mount(
-			app,
-			html`<p>${t("event.notFound")}</p>
-				<a href="#/">${t("event.back")}</a>`,
-		);
+		return [
+			emptyState(
+				"calendar",
+				t("event.notFound"),
+				t("event.notFoundHint"),
+				html`<a class="btn" href="#/"
+					>${icon("back")}${t("event.back")}</a
+				>`,
+			),
+		];
 	}
 
 	const canManage = me.is_admin || event.created_by === me.id;
 	const mine = event.responses.find((r) => r.user_id === me.id);
 	const count = tally(event.responses);
+	const people = [...event.responses].sort(
+		(a, b) =>
+			STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status) ||
+			byName(a, b),
+	);
 	const proposals = [...event.proposals].sort((a, b) => score(b) - score(a));
 	const items = [...event.items].sort((a, b) =>
 		a.created_at.localeCompare(b.created_at),
 	);
-	const reload = () => viewEvent(id);
+	const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ?? "")}`;
+	const reload = () => show(viewEvent, id);
 
 	const proposalRow = (p) => {
 		const myVote = p.votes.find((v) => v.user_id === me.id)?.value ?? 0;
 		const total = score(p);
-		return html` <li>
+		return html` <li class="row proposal">
 			<div class="grow">
 				${p.starts_at &&
-				html`📅 ${fmtDate(p.starts_at)} `}${p.location &&
-				html`📍 ${p.location}`}
-				<div class="muted small">${p.author?.display_name}</div>
+				html`<div class="row-line">
+					${icon("clock")}<strong>${fmtDate(p.starts_at)}</strong>
+				</div>`}
+				${p.location &&
+				html`<div class="row-line">
+					${icon("pin")}<strong>${p.location}</strong>
+				</div>`}
+				<div class="muted small">
+					${t("proposals.by", {
+						name: p.author?.display_name ?? "—",
+					})}
+				</div>
 			</div>
-			<button
-				class="btn icon ${myVote === 1 && "active yes"}"
-				data-action="vote"
-				data-id="${p.id}"
-				data-value="1"
-			>
-				👍
-			</button>
-			<strong>${total > 0 ? `+${total}` : total}</strong>
-			<button
-				class="btn icon ${myVote === -1 && "active no"}"
-				data-action="vote"
-				data-id="${p.id}"
-				data-value="-1"
-			>
-				👎
-			</button>
-			${canManage &&
-			html`<button class="btn" data-action="adopt" data-id="${p.id}">
-				${t("proposals.adopt")}
-			</button>`}
-			${(canManage || p.created_by === me.id) &&
-			html` <button
-				class="btn icon danger"
-				data-action="deleteProposal"
-				data-id="${p.id}"
-				title="${t("common.delete")}"
-			>
-				✕
-			</button>`}
+			<div class="row-actions">
+				<div
+					class="vote"
+					role="group"
+					aria-label="${t("proposals.vote")}"
+				>
+					<button
+						class="vote-btn up"
+						data-action="vote"
+						data-id="${p.id}"
+						data-value="1"
+						aria-pressed="${String(myVote === 1)}"
+						aria-label="${t("proposals.up")}"
+					>
+						${icon("up")}
+					</button>
+					<span
+						class="vote-score ${total > 0
+							? "pos"
+							: total < 0
+								? "neg"
+								: ""}"
+						>${total > 0 ? `+${total}` : total}</span
+					>
+					<button
+						class="vote-btn down"
+						data-action="vote"
+						data-id="${p.id}"
+						data-value="-1"
+						aria-pressed="${String(myVote === -1)}"
+						aria-label="${t("proposals.down")}"
+					>
+						${icon("down")}
+					</button>
+				</div>
+				${canManage &&
+				html`<button
+					class="btn btn-sm btn-soft"
+					data-action="adopt"
+					data-id="${p.id}"
+					title="${t("proposals.adoptHint")}"
+				>
+					${icon("check")}${t("proposals.adopt")}
+				</button>`}
+				${(canManage || p.created_by === me.id) &&
+				html`<button
+					class="btn-icon danger"
+					data-action="deleteProposal"
+					data-id="${p.id}"
+					title="${t("common.delete")}"
+					aria-label="${t("common.delete")}"
+				>
+					${icon("trash")}
+				</button>`}
+			</div>
 		</li>`;
 	};
 
 	const itemRow = (item) =>
-		html` <li>
-			<span class="grow">
-				${item.label}
-				${item.claimer &&
-				html`<span class="muted small">
-					—
-					${t("items.claimedBy", {
-						name: item.claimer.display_name,
-					})}</span
-				>`}
-			</span>
-			${!item.claimed_by &&
-			html`<button class="btn" data-action="claim" data-id="${item.id}">
-				${t("items.claim")}
-			</button>`}
-			${item.claimed_by === me.id &&
-			html`<button class="btn" data-action="unclaim" data-id="${item.id}">
-				${t("items.unclaim")}
-			</button>`}
-			${(canManage || item.created_by === me.id) &&
-			html` <button
-				class="btn icon danger"
-				data-action="deleteItem"
-				data-id="${item.id}"
-				title="${t("common.delete")}"
-			>
-				✕
-			</button>`}
+		html` <li class="row item">
+			${item.claimer
+				? avatar(item.claimer.display_name, item.claimed_by)
+				: html`<span class="item-icon">${icon("package")}</span>`}
+			<div class="grow">
+				<strong>${item.label}</strong>
+				<div class="muted small">
+					${item.claimed_by === me.id
+						? t("items.yours")
+						: item.claimer
+							? t("items.claimedBy", {
+									name: item.claimer.display_name,
+								})
+							: t("items.free")}
+				</div>
+			</div>
+			<div class="row-actions">
+				${!item.claimed_by &&
+				html`<button
+					class="btn btn-sm btn-soft"
+					data-action="claim"
+					data-id="${item.id}"
+				>
+					${t("items.claim")}
+				</button>`}
+				${item.claimed_by === me.id &&
+				html`<button
+					class="btn btn-sm btn-ghost"
+					data-action="unclaim"
+					data-id="${item.id}"
+				>
+					${t("items.unclaim")}
+				</button>`}
+				${(canManage || item.created_by === me.id) &&
+				html`<button
+					class="btn-icon danger"
+					data-action="deleteItem"
+					data-id="${item.id}"
+					title="${t("common.delete")}"
+					aria-label="${t("common.delete")}"
+				>
+					${icon("trash")}
+				</button>`}
+			</div>
 		</li>`;
 
-	mount(
-		app,
-		html` <a href="#/">${t("event.back")}</a>
-			<article>
-				<h1>${event.title}</h1>
-				<p>
-					📅
-					${fmtDate(event.starts_at)}${event.location &&
-					html`<br />📍 ${event.location}`}
-				</p>
-				${event.description &&
-				html`<p class="desc">${event.description}</p>`}
-				<p class="muted small">
-					${t("event.by", {
-						name: event.creator?.display_name ?? "—",
-					})}
-				</p>
-				${canManage &&
-				html` <div class="actions">
-					<a class="btn" href="#/event/${event.id}/edit"
-						>${t("event.edit")}</a
-					>
-					<button class="btn danger" data-action="deleteEvent">
-						${t("common.delete")}
-					</button>
-				</div>`}
-			</article>
+	return [
+		html` <a class="back" href="#/">${icon("back")}${t("event.back")}</a>
+			<div class="event-layout">
+				<div class="col col-main">
+					<article class="card panel hero">
+						<div class="hero-head">
+							${dateTile(event.starts_at, "date-tile-lg")}
+							<div class="hero-title">
+								${isLive(event.starts_at) &&
+								html`<span class="pill live"
+									>${t("date.live")}</span
+								>`}
+								<h1>${event.title}</h1>
+								<p class="muted small">
+									${t("event.by", {
+										name:
+											event.creator?.display_name ?? "—",
+									})}
+								</p>
+							</div>
+						</div>
+						<ul class="facts">
+							<li>
+								${icon("clock")}
+								<div>
+									<strong
+										>${fmtLongDate(event.starts_at)}</strong
+									>
+									<span class="muted"
+										>${fmtTime(event.starts_at)} ·
+										${relative(event.starts_at)}</span
+									>
+								</div>
+							</li>
+							${event.location &&
+							html`<li>
+								${icon("pin")}
+								<div>
+									<strong>${event.location}</strong>
+									<a
+										href="${mapsUrl}"
+										target="_blank"
+										rel="noopener"
+										>${t("event.openMap")}</a
+									>
+								</div>
+							</li>`}
+						</ul>
+						${event.description &&
+						html`<p class="desc">${event.description}</p>`}
+						<div class="hero-actions">
+							<button class="btn btn-sm" data-action="ics">
+								${icon("download")}${t("event.addToCalendar")}
+							</button>
+							${canManage &&
+							html` <a
+									class="btn btn-sm"
+									href="#/event/${event.id}/edit"
+									>${icon("edit")}${t("event.edit")}</a
+								>
+								<button
+									class="btn btn-sm btn-danger"
+									data-action="deleteEvent"
+								>
+									${icon("trash")}${t("common.delete")}
+								</button>`}
+						</div>
+					</article>
 
-			<section>
-				<h2>${t("rsvp.title")}</h2>
-				<div class="segmented">
-					${STATUSES.map(
-						(s) =>
-							html` <button
-								class="btn ${mine?.status === s &&
-								`active ${s}`}"
-								data-action="respond"
-								data-status="${s}"
-							>
-								${t(`rsvp.${s}`)}
-							</button>`,
-					)}
-				</div>
-				${mine &&
-				mine.status !== "no" &&
-				html` <div class="guests">
-					<span>${t("rsvp.guests")}</span>
-					<button
-						class="btn icon"
-						data-action="guests"
-						data-delta="-1"
-						${!mine.guests && "disabled"}
-					>
-						−
-					</button>
-					<strong>+${mine.guests}</strong>
-					<button
-						class="btn icon"
-						data-action="guests"
-						data-delta="1"
-						${mine.guests >= 20 && "disabled"}
-					>
-						+
-					</button>
-				</div>`}
-			</section>
-
-			<section>
-				<h2>${t("people.title")}</h2>
-				${event.responses.length
-					? html` <p class="muted small">
-								${t("people.summary", count)}
+					<section class="card panel proposals-card">
+						<div>
+							<h2 class="card-title">
+								${icon("bulb")}${t("proposals.title")}
+							</h2>
+							<p class="muted small">
+								${t("proposals.subtitle")}
 							</p>
-							${STATUSES.map((s) => {
-								const group = event.responses.filter(
-									(r) => r.status === s,
-								);
-								return (
-									group.length > 0 &&
-									html` <div class="group">
-										<span class="badge ${s}"
+						</div>
+						${proposals.length > 0 &&
+						html`<ul class="rows">
+							${proposals.map(proposalRow)}
+						</ul>`}
+						<form class="add-form" data-submit="propose">
+							<label class="field">
+								<span>${t("proposals.date")}</span>
+								<input
+									name="starts_at"
+									type="datetime-local"
+									min="${toInput(new Date())}"
+								/>
+							</label>
+							<label class="field">
+								<span>${t("proposals.location")}</span>
+								<input
+									name="location"
+									maxlength="200"
+									placeholder="${t(
+										"proposals.locationPlaceholder",
+									)}"
+								/>
+							</label>
+							<button class="btn">
+								${icon("plus")}${t("proposals.add")}
+							</button>
+						</form>
+					</section>
+
+					<section class="card panel items-card">
+						<div>
+							<h2 class="card-title">
+								${icon("package")}${t("items.title")}
+							</h2>
+							<p class="muted small">${t("items.subtitle")}</p>
+						</div>
+						${items.length > 0 &&
+						html`<ul class="rows">
+							${items.map(itemRow)}
+						</ul>`}
+						<form class="add-form single" data-submit="addItem">
+							<input
+								name="label"
+								required
+								maxlength="120"
+								pattern="${NOT_BLANK}"
+								placeholder="${t("items.placeholder")}"
+								aria-label="${t("items.title")}"
+							/>
+							<button class="btn" aria-label="${t("items.add")}">
+								${icon("plus")}<span class="hide-xs"
+									>${t("items.add")}</span
+								>
+							</button>
+						</form>
+					</section>
+				</div>
+
+				<aside class="col col-side">
+					<section class="card panel rsvp">
+						<h2 class="card-title">${t("rsvp.title")}</h2>
+						<div
+							class="rsvp-options"
+							role="group"
+							aria-label="${t("rsvp.title")}"
+						>
+							${STATUSES.map(
+								(s) =>
+									html` <button
+										class="rsvp-option ${s}"
+										data-action="respond"
+										data-status="${s}"
+										aria-pressed="${String(
+											mine?.status === s,
+										)}"
+									>
+										${icon(STATUS_ICON[s])}<span
 											>${t(`rsvp.${s}`)}</span
 										>
-										${group.map(
+									</button>`,
+							)}
+						</div>
+						${!mine &&
+						html`<p class="muted small">${t("rsvp.pending")}</p>`}
+						${mine &&
+						mine.status !== "no" &&
+						html` <div class="guests">
+							<div>
+								<strong>${t("rsvp.bring")}</strong>
+								<div class="muted small">
+									${tn("rsvp.total", 1 + mine.guests)}
+								</div>
+							</div>
+							<div class="stepper">
+								<button
+									class="btn-icon"
+									data-action="guests"
+									data-delta="-1"
+									aria-label="${t("rsvp.less")}"
+									${!mine.guests && "disabled"}
+								>
+									${icon("minus")}
+								</button>
+								<output aria-live="polite"
+									>${mine.guests}</output
+								>
+								<button
+									class="btn-icon"
+									data-action="guests"
+									data-delta="1"
+									aria-label="${t("rsvp.more")}"
+									${mine.guests >= MAX_GUESTS && "disabled"}
+								>
+									${icon("plus")}
+								</button>
+							</div>
+						</div>`}
+					</section>
+
+					<section class="card panel people-card">
+						<h2 class="card-title">
+							${icon("users")}${t("people.title")}
+						</h2>
+						<div class="stats">
+							${STATUSES.map(
+								(s) =>
+									html`<div class="stat ${s}">
+										<strong>${count[s]}</strong
+										><span>${t(`rsvp.${s}`)}</span>
+									</div>`,
+							)}
+						</div>
+						${people.length
+							? html` <ul class="people">
+										${people.map(
 											(r) =>
-												html`<span class="chip"
-													>${r.profile
-														?.display_name}${s !==
-														"no" &&
+												html` <li>
+													${avatar(
+														r.profile?.display_name,
+														r.user_id,
+													)}
+													<span class="grow truncate">
+														${r.profile
+															?.display_name ??
+														"—"}
+														${r.user_id === me.id &&
+														html`<span class="muted"
+															>(${t(
+																"common.you",
+															)})</span
+														>`}
+													</span>
+													${r.status !== "no" &&
 													r.guests > 0 &&
-													` +${r.guests}`}</span
-												>`,
+													html`<span class="pill"
+														>+${r.guests}</span
+													>`}
+													${statusPill(r.status)}
+												</li>`,
 										)}
-									</div>`
-								);
-							})}`
-					: html`<p class="muted">${t("people.empty")}</p>`}
-			</section>
-
-			<section>
-				<h2>${t("proposals.title")}</h2>
-				${proposals.length
-					? html`<ul class="list">
-							${proposals.map(proposalRow)}
-						</ul>`
-					: html`<p class="muted">${t("proposals.empty")}</p>`}
-				<form class="inline" data-submit="propose">
-					<input
-						name="starts_at"
-						type="datetime-local"
-						min="${toInput(new Date())}"
-					/>
-					<input
-						name="location"
-						maxlength="200"
-						placeholder="${t("proposals.location")}"
-					/>
-					<button class="btn">${t("proposals.add")}</button>
-				</form>
-			</section>
-
-			<section>
-				<h2>${t("items.title")}</h2>
-				${items.length
-					? html`<ul class="list">
-							${items.map(itemRow)}
-						</ul>`
-					: html`<p class="muted">${t("items.empty")}</p>`}
-				<form class="inline" data-submit="addItem">
-					<input
-						name="label"
-						required
-						maxlength="120"
-						placeholder="${t("items.placeholder")}"
-					/>
-					<button class="btn">${t("items.add")}</button>
-				</form>
-			</section>`,
+									</ul>
+									<p class="muted small">
+										${t("people.hint")}
+									</p>`
+							: html`<p class="empty-inline">
+									${t("people.empty")}
+								</p>`}
+					</section>
+				</aside>
+			</div>`,
 		{
+			ics: () =>
+				downloadFile(
+					`${slug(event.title)}.ics`,
+					toIcs(event),
+					"text/calendar",
+				),
 			deleteEvent: async () => {
-				if (!confirm(t("event.confirmDelete"))) return;
+				const ok = await ask({
+					title: t("event.confirmDelete"),
+					message: t("event.confirmDeleteHint"),
+					confirm: t("common.delete"),
+					danger: true,
+				});
+				if (!ok) return;
 				await api.deleteEvent(id);
+				notify(t("event.deleted"));
 				location.hash = "#/";
 			},
 			respond: async ({ status }) => {
+				if (mine?.status === status) return;
 				await api.respond(
 					id,
 					me.id,
@@ -389,20 +846,19 @@ async function viewEvent(id) {
 				await reload();
 			},
 			guests: async ({ delta }) => {
-				await api.respond(
-					id,
-					me.id,
-					mine.status,
-					Math.min(20, Math.max(0, mine.guests + Number(delta))),
+				const guests = Math.min(
+					MAX_GUESTS,
+					Math.max(0, mine.guests + Number(delta)),
 				);
+				await api.respond(id, me.id, mine.status, guests);
 				await reload();
 			},
-			propose: async ({ starts_at, location }) => {
-				if (!starts_at && !location.trim())
+			propose: async ({ starts_at, location: place }) => {
+				if (!starts_at && !place.trim())
 					return notify(t("proposals.hint"), true);
 				await api.addProposal(id, {
 					starts_at: starts_at ? fromInput(starts_at) : null,
-					location: location.trim() || null,
+					location: place.trim() || null,
 				});
 				await reload();
 			},
@@ -418,8 +874,14 @@ async function viewEvent(id) {
 				await reload();
 			},
 			adopt: async ({ id: pid }) => {
-				if (!confirm(t("proposals.confirmAdopt"))) return;
+				const ok = await ask({
+					title: t("proposals.confirmAdopt"),
+					message: t("proposals.confirmAdoptHint"),
+					confirm: t("proposals.adopt"),
+				});
+				if (!ok) return;
 				await api.adoptProposal(pid);
+				notify(t("proposals.adopted"));
 				await reload();
 			},
 			deleteProposal: async ({ id: pid }) => {
@@ -431,7 +893,8 @@ async function viewEvent(id) {
 				await reload();
 			},
 			claim: async ({ id: itemId }) => {
-				await api.claimItem(itemId, me.id);
+				const updated = await api.claimItem(itemId, me.id);
+				if (!updated.length) notify(t("items.taken"), true);
 				await reload();
 			},
 			unclaim: async ({ id: itemId }) => {
@@ -443,27 +906,35 @@ async function viewEvent(id) {
 				await reload();
 			},
 		},
-	);
+	];
 }
 
 async function viewEventForm(id) {
 	const event = id ? await api.getEvent(id) : null;
 	if (id && !(event && (me.is_admin || event.created_by === me.id)))
 		return void (location.hash = "#/");
+	const back = id ? `#/event/${id}` : "#/";
 
-	mount(
-		app,
-		html` <h1>${t(id ? "form.editTitle" : "form.newTitle")}</h1>
-			<form class="stack" data-submit="save">
-				<label
-					>${t("form.title")}<input
+	return [
+		html` <div class="page-narrow">
+			<a class="back" href="${back}"
+				>${icon("back")}${t(id ? "event.backToEvent" : "event.back")}</a
+			>
+			<form class="card panel" data-submit="save">
+				<h1>${t(id ? "form.editTitle" : "form.newTitle")}</h1>
+				<label class="field">
+					<span>${t("form.title")}</span>
+					<input
 						name="title"
 						required
 						maxlength="120"
+						pattern="${NOT_BLANK}"
 						value="${event?.title}"
-				/></label>
-				<label
-					>${t("form.startsAt")}
+						placeholder="${t("form.titlePlaceholder")}"
+					/>
+				</label>
+				<label class="field">
+					<span>${t("form.startsAt")}</span>
 					<input
 						name="starts_at"
 						type="datetime-local"
@@ -472,28 +943,42 @@ async function viewEventForm(id) {
 						${!id && html`min="${toInput(new Date())}"`}
 					/>
 				</label>
-				<label
-					>${t("form.location")}<input
+				<label class="field">
+					<span
+						>${t("form.location")}
+						<em class="optional">${t("common.optional")}</em></span
+					>
+					<input
 						name="location"
 						maxlength="200"
 						value="${event?.location}"
-				/></label>
-				<label
-					>${t("form.description")}<textarea
+						placeholder="${t("form.locationPlaceholder")}"
+					/>
+				</label>
+				<label class="field">
+					<span
+						>${t("form.description")}
+						<em class="optional">${t("common.optional")}</em></span
+					>
+					<textarea
 						name="description"
-						rows="4"
+						rows="5"
 						maxlength="2000"
+						placeholder="${t("form.descriptionPlaceholder")}"
 					>
 ${event?.description}</textarea
 					>
 				</label>
-				<div class="actions">
-					<button class="btn primary">${t("common.save")}</button>
-					<a class="btn" href="${id ? `#/event/${id}` : "#/"}"
+				<div class="form-actions">
+					<a class="btn btn-ghost" href="${back}"
 						>${t("common.cancel")}</a
 					>
+					<button class="btn btn-primary">
+						${t(id ? "common.save" : "form.create")}
+					</button>
 				</div>
-			</form>`,
+			</form>
+		</div>`,
 		{
 			save: async (form) => {
 				const data = {
@@ -502,138 +987,316 @@ ${event?.description}</textarea
 					location: form.location.trim() || null,
 					description: form.description.trim() || null,
 				};
-				const savedId = id ?? (await api.createEvent(data)).id;
 				if (id) await api.updateEvent(id, data);
+				const savedId = id ?? (await api.createEvent(data)).id;
+				notify(t(id ? "common.saved" : "form.created"));
 				location.hash = `#/event/${savedId}`;
 			},
 		},
-	);
+	];
 }
 
 function viewAccount() {
-	mount(
-		app,
-		html` <h1>${t("account.title")}</h1>
-			<form class="stack" data-submit="name">
-				<label
-					>${t("account.name")}<input
+	return [
+		html` <div class="page-narrow">
+			<h1>${t("account.title")}</h1>
+			<section class="card profile-card">
+				${avatar(me.display_name, me.id, "xl")}
+				<div class="grow">
+					<strong class="profile-name">${me.display_name}</strong>
+					<div class="muted truncate">${me.email}</div>
+					${me.is_admin &&
+					html`<span class="pill accent"
+						>${t("admin.isAdmin")}</span
+					>`}
+				</div>
+			</section>
+			<form class="card panel" data-submit="name">
+				<h2 class="card-title">
+					${icon("user")}${t("account.profile")}
+				</h2>
+				<label class="field">
+					<span>${t("account.name")}</span>
+					<input
 						name="display_name"
 						required
 						maxlength="60"
+						pattern="${NOT_BLANK}"
 						value="${me.display_name}"
-				/></label>
-				<button class="btn">${t("common.save")}</button>
+					/>
+				</label>
+				<div class="form-actions">
+					<button class="btn btn-primary">${t("common.save")}</button>
+				</div>
 			</form>
-			<form class="stack" data-submit="password">
-				<label
-					>${t("account.password")}<input
+			<form class="card panel" data-submit="password">
+				<h2 class="card-title">
+					${icon("key")}${t("account.security")}
+				</h2>
+				<label class="field">
+					<span>${t("account.password")}</span>
+					<input
 						name="password"
 						type="password"
 						autocomplete="new-password"
 						required
 						minlength="8"
-				/></label>
-				<button class="btn">${t("account.changePassword")}</button>
-			</form>`,
+					/>
+				</label>
+				<label class="field">
+					<span>${t("account.passwordConfirm")}</span>
+					<input
+						name="confirm"
+						type="password"
+						autocomplete="new-password"
+						required
+						minlength="8"
+					/>
+				</label>
+				<p class="form-error" role="alert" hidden></p>
+				<div class="form-actions">
+					<button class="btn btn-primary">
+						${t("account.changePassword")}
+					</button>
+				</div>
+			</form>
+			<section class="card panel">
+				<h2 class="card-title">
+					${icon("globe")}${t("account.language")}
+				</h2>
+				<div
+					class="segmented"
+					role="group"
+					aria-label="${t("account.language")}"
+				>
+					<button
+						data-action="lang"
+						data-lang="it"
+						aria-pressed="${String(lang() === "it")}"
+					>
+						Italiano
+					</button>
+					<button
+						data-action="lang"
+						data-lang="en"
+						aria-pressed="${String(lang() === "en")}"
+					>
+						English
+					</button>
+				</div>
+			</section>
+			<button class="btn btn-danger btn-block" data-action="logout">
+				${icon("logout")}${t("nav.logout")}
+			</button>
+		</div>`,
 		{
 			name: async ({ display_name }) => {
-				await api.updateProfile(me.id, display_name.trim());
-				me.display_name = display_name.trim();
-				renderNav();
+				const name = display_name.trim();
+				await api.updateProfile(me.id, name);
+				me.display_name = name;
 				notify(t("common.saved"));
+				render();
 			},
-			password: async ({ password }, form) => {
+			password: async ({ password, confirm }, form) => {
+				const error = form.querySelector(".form-error");
+				error.hidden = password === confirm;
+				if (password !== confirm)
+					return void (error.textContent = t(
+						"account.passwordMismatch",
+					));
 				await api.changePassword(password);
 				form.reset();
-				notify(t("common.saved"));
+				notify(t("account.passwordChanged"));
 			},
+			lang: ({ lang: value }) => {
+				setLang(value);
+				render();
+			},
+			logout: () => api.signOut(),
 		},
-	);
+	];
 }
 
 async function viewAdmin() {
 	if (!me.is_admin) return void (location.hash = "#/");
 	const users = await api.admin("list");
 
-	mount(
-		app,
-		html` <h1>${t("admin.title")}</h1>
-			<ul class="list">
+	return [
+		html` <header class="page-head">
+				<div>
+					<h1>${t("admin.title")}</h1>
+					<p class="muted">${tn("admin.count", users.length)}</p>
+				</div>
+			</header>
+
+			<details class="card disclosure" ${users.length <= 1 && "open"}>
+				<summary>
+					${icon("userPlus")}<span>${t("admin.create")}</span>${icon(
+						"chevronDown",
+						"chev",
+					)}
+				</summary>
+				<form
+					class="disclosure-body"
+					data-submit="create"
+					autocomplete="off"
+				>
+					<div class="field-grid">
+						<label class="field">
+							<span>${t("admin.name")}</span>
+							<input
+								name="display_name"
+								required
+								maxlength="60"
+								pattern="${NOT_BLANK}"
+							/>
+						</label>
+						<label class="field">
+							<span>${t("login.email")}</span>
+							<input
+								name="email"
+								type="email"
+								inputmode="email"
+								required
+							/>
+						</label>
+						<div class="field">
+							<label for="new-password"
+								>${t("admin.password")}</label
+							>
+							<div class="input-group">
+								<input
+									id="new-password"
+									name="password"
+									required
+									minlength="8"
+									value="${randomPassword()}"
+									autocomplete="new-password"
+									spellcheck="false"
+								/>
+								<button
+									type="button"
+									class="btn-icon"
+									data-action="generate"
+									title="${t("admin.generate")}"
+									aria-label="${t("admin.generate")}"
+								>
+									${icon("refresh")}
+								</button>
+							</div>
+						</div>
+					</div>
+					<label class="check"
+						><input name="is_admin" type="checkbox" /><span
+							>${t("admin.makeAdmin")}</span
+						></label
+					>
+					<div class="form-actions">
+						<button class="btn btn-primary">
+							${icon("userPlus")}${t("admin.add")}
+						</button>
+					</div>
+				</form>
+			</details>
+
+			<ul class="user-list">
 				${users.map(
 					(u) =>
-						html` <li>
+						html` <li class="card user-row">
+							${avatar(u.display_name, u.id, "lg")}
 							<div class="grow">
-								<strong>${u.display_name}</strong>
-								<div class="muted small">${u.email}</div>
+								<strong>${u.display_name ?? "—"}</strong>
+								${u.id === me.id &&
+								html`<span class="muted"
+									>(${t("common.you")})</span
+								>`}
+								<div class="muted small truncate">
+									${u.email}
+								</div>
 							</div>
-							<label class="check">
-								<input
-									type="checkbox"
-									data-action="toggleAdmin"
+							<div class="row-actions">
+								<label class="switch">
+									<input
+										type="checkbox"
+										data-action="toggleAdmin"
+										data-id="${u.id}"
+										${u.is_admin && "checked"}
+										${u.id === me.id && "disabled"}
+									/>
+									<span>${t("admin.isAdmin")}</span>
+								</label>
+								<button
+									class="btn-icon"
+									data-action="resetPassword"
 									data-id="${u.id}"
-									${u.is_admin && "checked"}
-									${u.id === me.id && "disabled"}
-								/>
-								${t("admin.isAdmin")}
-							</label>
-							<button
-								class="btn"
-								data-action="resetPassword"
-								data-id="${u.id}"
-								data-name="${u.display_name}"
-							>
-								${t("admin.resetPassword")}
-							</button>
-							${u.id !== me.id &&
-							html` <button
-								class="btn danger"
-								data-action="deleteUser"
-								data-id="${u.id}"
-								data-name="${u.display_name}"
-							>
-								${t("common.delete")}
-							</button>`}
+									data-name="${u.display_name}"
+									title="${t("admin.resetPassword")}"
+									aria-label="${t("admin.resetPassword")}"
+								>
+									${icon("key")}
+								</button>
+								${u.id !== me.id &&
+								html`<button
+									class="btn-icon danger"
+									data-action="deleteUser"
+									data-id="${u.id}"
+									data-name="${u.display_name}"
+									title="${t("common.delete")}"
+									aria-label="${t("common.delete")}"
+								>
+									${icon("trash")}
+								</button>`}
+							</div>
 						</li>`,
 				)}
-			</ul>
-
-			<h2>${t("admin.create")}</h2>
-			<form class="stack" data-submit="create">
-				<label
-					>${t("admin.name")}<input
-						name="display_name"
-						required
-						maxlength="60"
-				/></label>
-				<label
-					>${t("login.email")}<input
-						name="email"
-						type="email"
-						required
-				/></label>
-				<label
-					>${t("admin.password")}<input
-						name="password"
-						required
-						minlength="8"
-						autocomplete="off"
-				/></label>
-				<label class="check"
-					><input name="is_admin" type="checkbox" /> ${t(
-						"admin.isAdmin",
-					)}</label
-				>
-				<button class="btn primary">${t("admin.add")}</button>
-			</form>`,
+			</ul>`,
 		{
+			generate: (_, el) => {
+				el.closest(".input-group").querySelector("input").value =
+					randomPassword();
+			},
 			create: async (form) => {
-				await api.admin("create", {
-					...form,
+				const user = {
 					display_name: form.display_name.trim(),
+					email: form.email.trim(),
+					password: form.password,
 					is_admin: form.is_admin === "on",
+				};
+				await api.admin("create", user);
+				const loginUrl = location.origin + location.pathname;
+				await ask({
+					title: t("admin.createdTitle"),
+					message: t("admin.createdMessage", {
+						name: user.display_name,
+					}),
+					body: html` <div class="credentials">
+							<div>
+								<span class="muted small"
+									>${t("login.email")}</span
+								><code>${user.email}</code>
+							</div>
+							<div>
+								<span class="muted small"
+									>${t("login.password")}</span
+								><code>${user.password}</code>
+							</div>
+							<div>
+								<span class="muted small"
+									>${t("admin.link")}</span
+								><code>${loginUrl}</code>
+							</div>
+						</div>
+						<button
+							type="button"
+							class="btn btn-sm"
+							data-copy="${`${loginUrl}\n${t("login.email")}: ${user.email}\n${t("login.password")}: ${user.password}`}"
+						>
+							${icon("copy")}<span>${t("admin.copy")}</span>
+						</button>`,
+					confirm: t("common.done"),
+					cancel: null,
 				});
-				notify(t("admin.created"));
-				await viewAdmin();
+				await show(viewAdmin);
 			},
 			toggleAdmin: async ({ id }, el) => {
 				try {
@@ -645,18 +1308,35 @@ async function viewAdmin() {
 				}
 			},
 			resetPassword: async ({ id, name }) => {
-				const password = prompt(t("admin.newPassword", { name }));
+				const password = await ask({
+					title: t("admin.resetTitle", { name }),
+					message: t("admin.resetHint"),
+					input: {
+						label: t("admin.newPassword"),
+						value: randomPassword(),
+						minlength: 8,
+						generate: true,
+					},
+					confirm: t("admin.resetPassword"),
+				});
 				if (!password) return;
 				await api.admin("update", { id, password });
-				notify(t("common.saved"));
+				notify(t("admin.passwordUpdated"));
 			},
 			deleteUser: async ({ id, name }) => {
-				if (!confirm(t("admin.confirmDelete", { name }))) return;
+				const ok = await ask({
+					title: t("admin.confirmDelete", { name }),
+					message: t("admin.confirmDeleteHint"),
+					confirm: t("common.delete"),
+					danger: true,
+				});
+				if (!ok) return;
 				await api.admin("delete", { id });
-				await viewAdmin();
+				notify(t("admin.deleted"));
+				await show(viewAdmin);
 			},
 		},
-	);
+	];
 }
 
 // ── Avvio ────────────────────────────────────────────────────────────────
@@ -664,9 +1344,19 @@ async function viewAdmin() {
 window.addEventListener("hashchange", render);
 
 if (api.configured) {
-	api.onUserChange(async (userId) => {
-		me = userId ? await api.getProfile(userId).catch(() => null) : null;
-		if (userId && !me) return void api.signOut();
+	api.onUserChange(async (user) => {
+		me = null;
+		if (user) {
+			try {
+				const profile = await api.getProfile(user.id);
+				// Utente eliminato dall'admin: la sessione è ancora valida ma il profilo non esiste più.
+				if (!profile) return void api.signOut();
+				me = { ...profile, email: user.email };
+			} catch (err) {
+				renderNav();
+				return void mount(app, errorState(err.message));
+			}
+		}
 		render();
 	});
 } else {
