@@ -31,14 +31,17 @@ export const html = (strings, ...values) =>
 	new Safe(strings.reduce((out, s, i) => out + render(values[i - 1]) + s));
 
 // Chiave stabile di un campo o di un pulsante d'azione, per ritrovarlo dopo un re-render.
+// Checkbox e radio: conta lo stato "checked", e più caselle possono condividere lo stesso name.
+const isToggle = (el) => el.type === "checkbox" || el.type === "radio";
+
 const keyOf = (el) =>
 	el.name && el.form
-		? `field|${el.form.dataset.submit}|${el.name}`
+		? `field|${el.form.dataset.submit}|${el.name}${isToggle(el) ? `|${el.value}` : ""}`
 		: el.dataset?.action &&
 			`action|${el.dataset.action}|${el.dataset.id}|${el.dataset.status}|${el.dataset.value}|${el.dataset.delta}`;
 
 const isDirty = (el) =>
-	el.type === "checkbox"
+	isToggle(el)
 		? el.checked !== el.defaultChecked
 		: el.value !== el.defaultValue;
 
@@ -49,10 +52,7 @@ function snapshot(root) {
 		"form[data-submit]:not([data-sent]) [name]",
 	))
 		if (isDirty(el))
-			values.set(
-				keyOf(el),
-				el.type === "checkbox" ? el.checked : el.value,
-			);
+			values.set(keyOf(el), isToggle(el) ? el.checked : el.value);
 	const active = root.contains(document.activeElement)
 		? document.activeElement
 		: null;
@@ -71,7 +71,7 @@ function restore(root, { values, focus }) {
 	)) {
 		const key = keyOf(el);
 		if (values.has(key)) {
-			if (el.type === "checkbox") el.checked = values.get(key);
+			if (isToggle(el)) el.checked = values.get(key);
 			else el.value = values.get(key);
 		}
 		if (key && key === focus?.key) {
@@ -243,6 +243,7 @@ const ICONS = {
 	alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
 	archive:
 		'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+	lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
 	mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
 	message: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
 	more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',

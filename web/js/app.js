@@ -50,7 +50,7 @@ const routes = [
 	{
 		path: /^\/$/,
 		view: viewEvents,
-		live: () => [["events"], ["responses"], ["profiles"]],
+		live: () => [["events"], ["responses"], ["invitations"], ["profiles"]],
 	},
 	{ path: /^\/new$/, view: () => viewEventForm() },
 	{
@@ -61,6 +61,7 @@ const routes = [
 			["responses", `event_id=eq.${id}`],
 			["proposals", `event_id=eq.${id}`],
 			["items", `event_id=eq.${id}`],
+			["invitations", `event_id=eq.${id}`],
 			["votes"],
 			["profiles"],
 		],
@@ -286,6 +287,19 @@ const deleteButton = (action, id, name) =>
 	</button>`;
 
 const eventUrl = (id) => `${location.origin}${location.pathname}#/event/${id}`;
+
+const setInvitees = (form, checked) => {
+	for (const box of form.querySelectorAll(
+		'input[name="invitees"]:not(:disabled)',
+	))
+		box.checked = checked;
+};
+
+/** Messaggio comprensibile per gli errori di save_event (il database risponde con un codice). */
+const saveError = (err) =>
+	({ event_in_past: t("form.pastDate"), not_allowed: t("form.notAllowed") })[
+		err.message
+	] ?? err.message;
 
 /** Evento "tutto il giorno": l'orario, che si perderebbe, va in testa alla descrizione. */
 function toIcs(event) {
@@ -594,6 +608,10 @@ function eventCard(event) {
 							>${event.location}</span
 						></span
 					>`}
+					${event.invite_only &&
+					html`<span
+						>${icon("lock")}${t("audience.inviteOnly")}</span
+					>`}
 				</div>
 				<div class="event-card-foot">
 					${going.length > 0 && avatarStack(going)}
@@ -612,7 +630,10 @@ function eventCard(event) {
 }
 
 async function viewEvent(id) {
-	const event = await api.getEvent(id);
+	const [event, members] = await Promise.all([
+		api.getEvent(id),
+		api.listProfiles(),
+	]);
 	if (!event) {
 		return [
 			emptyState(
@@ -642,6 +663,13 @@ async function viewEvent(id) {
 	const items = [...event.items].sort((a, b) =>
 		a.created_at.localeCompare(b.created_at),
 	);
+	// A chi è rivolto l'evento: gli invitati (più l'organizzatore) oppure tutto il gruppo.
+	const invited = new Set(event.invitations.map((i) => i.user_id));
+	const audience = event.invite_only
+		? members.filter((m) => invited.has(m.id) || m.id === event.created_by)
+		: members;
+	const answered = new Set(event.responses.map((r) => r.user_id));
+	const pending = audience.filter((m) => !answered.has(m.id));
 	const reload = () => show(viewEvent, [id]);
 
 	const proposalRow = (p) => {
@@ -859,6 +887,26 @@ async function viewEvent(id) {
 									>
 								</div>
 							</li>`}
+							<li>
+								${icon(event.invite_only ? "lock" : "users")}
+								<div>
+									<strong
+										>${event.invite_only
+											? t("audience.invited")
+											: t("audience.all")}</strong
+									>
+									<span class="muted"
+										>${event.invite_only
+											? audience
+													.map((m) => m.display_name)
+													.join(", ")
+											: tn(
+													"audience.members",
+													audience.length,
+												)}</span
+									>
+								</div>
+							</li>
 						</ul>
 						${event.description &&
 						html`<p class="desc">${event.description}</p>`}
@@ -1047,6 +1095,29 @@ async function viewEvent(id) {
 							: html`<p class="empty-inline">
 									${t("people.empty")}
 								</p>`}
+						${pending.length > 0 &&
+						html`<div class="pending">
+							<h3 class="pending-title">
+								${t(
+									closed
+										? "people.noAnswer"
+										: "people.pending",
+								)}
+								<span class="muted">${pending.length}</span>
+							</h3>
+							<div class="pending-list">
+								${pending.map(
+									(m) =>
+										html`<span class="chip"
+											>${avatar(
+												m.display_name,
+												m.id,
+												"sm",
+											)}${m.display_name}</span
+										>`,
+								)}
+							</div>
+						</div>`}
 					</section>
 				</aside>
 			</div>`,
@@ -1145,12 +1216,19 @@ async function viewEvent(id) {
 }
 
 async function viewEventForm(id) {
-	const event = id ? await api.getEvent(id) : null;
+	const [event, members] = await Promise.all([
+		id ? api.getEvent(id) : null,
+		api.listProfiles(),
+	]);
 	if (id && !(event && (me.is_admin || event.created_by === me.id)))
 		return void (location.hash = "#/");
 	if (event && isPast(event.starts_at))
 		return void (location.hash = `#/event/${id}`);
 	const back = id ? `#/event/${id}` : "#/";
+	// L'organizzatore vede sempre l'evento: compare in elenco ma non si può togliere.
+	const organizer = event?.created_by ?? me.id;
+	const invited = new Set(event?.invitations.map((i) => i.user_id));
+	const inviteOnly = Boolean(event?.invite_only);
 
 	return [
 		html`<div class="page-narrow">
@@ -1207,6 +1285,83 @@ async function viewEventForm(id) {
 ${event?.description}</textarea
 					>
 				</label>
+				<fieldset class="field audience">
+					<legend>${t("audience.label")}</legend>
+					<div class="segmented" role="radiogroup">
+						<label
+							><input
+								type="radio"
+								name="audience"
+								value="all"
+								${!inviteOnly && "checked"}
+							/>${icon("users")}${t("audience.all")}</label
+						>
+						<label
+							><input
+								type="radio"
+								name="audience"
+								value="invited"
+								${inviteOnly && "checked"}
+							/>${icon("lock")}${t("audience.invited")}</label
+						>
+					</div>
+					<p class="muted small audience-hint-all">
+						${t("audience.hintAll")}
+					</p>
+					<div class="invitees">
+						<div class="invitees-head">
+							<span class="muted small"
+								>${t("audience.hintInvited")}</span
+							>
+							<span class="invitees-tools">
+								<button
+									type="button"
+									class="link"
+									data-action="selectAll"
+								>
+									${t("audience.selectAll")}
+								</button>
+								<button
+									type="button"
+									class="link"
+									data-action="selectNone"
+								>
+									${t("audience.selectNone")}
+								</button>
+							</span>
+						</div>
+						<ul class="invitee-list">
+							${members.map(
+								(m) =>
+									html`<li>
+										<label class="invitee">
+											<input
+												type="checkbox"
+												name="invitees"
+												value="${m.id}"
+												${(m.id === organizer ||
+													invited.has(m.id)) &&
+												"checked"}
+												${m.id === organizer &&
+												"disabled"}
+											/>
+											${avatar(m.display_name, m.id)}
+											<span class="grow truncate"
+												>${m.display_name}</span
+											>
+											${m.id === organizer &&
+											html`<span class="muted small"
+												>${t(
+													"audience.organizer",
+												)}</span
+											>`}
+										</label>
+									</li>`,
+							)}
+						</ul>
+					</div>
+				</fieldset>
+				<p class="form-error" role="alert" hidden></p>
 				<div class="form-actions">
 					<a class="btn btn-ghost" href="${back}"
 						>${t("common.cancel")}</a
@@ -1218,23 +1373,115 @@ ${event?.description}</textarea
 			</form>
 		</div>`,
 		{
-			save: async (form) => {
-				const data = {
-					title: form.title.trim(),
-					starts_at: fromInput(form.starts_at),
-					location: form.location.trim() || null,
-					description: form.description.trim() || null,
+			selectAll: (_, el) => setInvitees(el.form, true),
+			selectNone: (_, el) => setInvitees(el.form, false),
+			save: async (values, form) => {
+				const error = form.querySelector(".form-error");
+				const fail = (message) => {
+					error.textContent = message;
+					error.hidden = false;
 				};
-				if (id) await api.updateEvent(id, data);
-				const savedId = id ?? (await api.createEvent(data)).id;
-				notify(t(id ? "common.saved" : "form.created"));
-				location.hash = `#/event/${savedId}`;
+				error.hidden = true;
+				const data = {
+					title: values.title.trim(),
+					starts_at: fromInput(values.starts_at),
+					location: values.location.trim() || null,
+					description: values.description.trim() || null,
+					invite_only: values.audience === "invited",
+				};
+				// Safari ignora `min` sui campi data: il controllo va fatto qui (il database lo ripete).
+				if (
+					id
+						? isPast(data.starts_at)
+						: new Date(data.starts_at) <= new Date()
+				)
+					return fail(t("form.pastDate"));
+				const invitees = new FormData(form).getAll("invitees");
+				if (data.invite_only && !invitees.length)
+					return fail(t("audience.noneSelected"));
+				try {
+					const savedId = await api.saveEvent(
+						id ?? null,
+						data,
+						invitees,
+					);
+					notify(t(id ? "common.saved" : "form.created"));
+					location.hash = `#/event/${savedId}`;
+				} catch (err) {
+					fail(saveError(err));
+				}
 			},
 		},
 	];
 }
 
-function viewAccount() {
+async function viewAccount() {
+	const token = await api.getCalendarToken();
+	const feedUrl = token && api.calendarFeedUrl(token, lang());
+	const webcalUrl = feedUrl?.replace(/^https:/, "webcal:");
+	const calendarCard = html`<section class="card panel">
+		<div>
+			<h2 class="card-title">
+				${icon("calendar")}${t("calendar.title")}
+			</h2>
+			<p class="muted small">${t("calendar.hint")}</p>
+		</div>
+		${token
+			? html`<div class="calendar-apps">
+						<a class="btn" href="${webcalUrl}"
+							>${icon("calendarCheck")}${t("calendar.apple")}</a
+						>
+						<a
+							class="btn"
+							href="https://calendar.google.com/calendar/r?cid=${encodeURIComponent(
+								webcalUrl,
+							)}"
+							target="_blank"
+							rel="noopener"
+							>${icon("calendarCheck")}${t("calendar.google")}</a
+						>
+					</div>
+					<div class="field">
+						<label for="calendar-url">${t("calendar.link")}</label>
+						<div class="input-group">
+							<input
+								id="calendar-url"
+								value="${feedUrl}"
+								readonly
+							/>
+							<button
+								type="button"
+								class="btn"
+								data-action="copyCalendar"
+							>
+								${icon("copy")}<span>${t("share.copy")}</span>
+							</button>
+						</div>
+					</div>
+					<p class="notice small">
+						${icon("lock")}${t("calendar.private")}
+					</p>
+					<div class="form-actions">
+						<button
+							class="btn btn-ghost"
+							data-action="disableCalendar"
+						>
+							${t("calendar.disable")}
+						</button>
+						<button class="btn" data-action="rotateCalendar">
+							${icon("refresh")}${t("calendar.rotate")}
+						</button>
+					</div>`
+			: html`<div class="form-actions">
+					<button
+						class="btn btn-primary"
+						data-action="enableCalendar"
+					>
+						${icon("calendarCheck")}${t("calendar.enable")}
+					</button>
+				</div>`}
+	</section>`;
+
 	return [
 		html`<div class="page-narrow">
 			${backLink("#/", t("event.back"))}
@@ -1301,8 +1548,40 @@ function viewAccount() {
 					</button>
 				</div>
 			</form>
+			${calendarCard}
 		</div>`,
 		{
+			enableCalendar: async () => {
+				await api.rotateCalendarToken();
+				await show(viewAccount);
+			},
+			copyCalendar: async () => {
+				await navigator.clipboard.writeText(feedUrl);
+				notify(t("common.copied"));
+			},
+			rotateCalendar: async () => {
+				const ok = await ask({
+					title: t("calendar.rotateConfirm"),
+					message: t("calendar.rotateHint"),
+					confirm: t("calendar.rotate"),
+				});
+				if (!ok) return;
+				await api.rotateCalendarToken();
+				notify(t("calendar.rotated"));
+				await show(viewAccount);
+			},
+			disableCalendar: async () => {
+				const ok = await ask({
+					title: t("calendar.disableConfirm"),
+					message: t("calendar.disableHint"),
+					confirm: t("calendar.disable"),
+					danger: true,
+				});
+				if (!ok) return;
+				await api.deleteCalendarToken();
+				notify(t("calendar.disabled"));
+				await show(viewAccount);
+			},
 			name: async ({ display_name }) => {
 				const name = display_name.trim();
 				await api.updateProfile(me.id, name);
