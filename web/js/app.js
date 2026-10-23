@@ -125,7 +125,7 @@ function renderNav() {
 	);
 }
 
-// Chiude il menu utente cliccando fuori, su una voce o premendo Esc.
+// Chiude il menu impostazioni cliccando fuori, su una voce o premendo Esc.
 document.addEventListener("click", (e) => {
 	for (const menu of document.querySelectorAll("details.menu[open]")) {
 		if (!menu.contains(e.target) || e.target.closest(".menu-item"))
@@ -158,7 +158,7 @@ const byName = (a, b) =>
 	);
 
 const skeleton = () =>
-	html` <div
+	html`<div
 		class="skeleton-page"
 		aria-busy="true"
 		aria-label="${t("common.loading")}"
@@ -167,8 +167,20 @@ const skeleton = () =>
 		${[1, 2, 3].map(() => html`<div class="skeleton skeleton-card"></div>`)}
 	</div>`;
 
+const pageHead = (title, subtitle, action) =>
+	html`<header class="page-head">
+		<div>
+			<h1>${title}</h1>
+			${subtitle && html`<p class="muted">${subtitle}</p>`}
+		</div>
+		${action}
+	</header>`;
+
+const backLink = (href, label) =>
+	html`<a class="back" href="${href}">${icon("back")}${label}</a>`;
+
 const emptyState = (name, title, text, action) =>
-	html` <div class="empty">
+	html`<div class="empty">
 		<div class="empty-icon">${icon(name)}</div>
 		<h2>${title}</h2>
 		${text && html`<p class="muted">${text}</p>`} ${action}
@@ -192,7 +204,7 @@ const dateTile = (iso, size = "") => {
 };
 
 const avatarStack = (responses, max = 4) =>
-	html` <span class="avatar-stack">
+	html`<span class="avatar-stack">
 		${responses
 			.slice(0, max)
 			.map((r) => avatar(r.profile?.display_name, r.user_id, "sm"))}
@@ -207,24 +219,29 @@ const statusPill = (status) =>
 		>${icon(STATUS_ICON[status])}${t(`rsvp.${status}`)}</span
 	>`;
 
+const deleteButton = (action, id, name) =>
+	html`<button
+		class="btn-icon danger"
+		data-action="${action}"
+		data-id="${id}"
+		data-name="${name}"
+		title="${t("common.delete")}"
+		aria-label="${t("common.delete")}"
+	>
+		${icon("trash")}
+	</button>`;
+
+/** Evento "tutto il giorno": l'orario, che si perderebbe, va in testa alla descrizione. */
 function toIcs(event) {
-	const stamp = (date) =>
-		date
-			.toISOString()
-			.replace(/[-:]/g, "")
-			.replace(/\.\d{3}/, "");
+	const day = (date) => toInput(date).slice(0, 10).replaceAll("-", "");
 	const text = (value) =>
 		value.replace(/[\\;,]/g, "\\$&").replace(/\r?\n/g, "\\n");
-	// Evento "tutto il giorno": date locali, con DTEND esclusivo al giorno successivo.
-	const day = (date) =>
-		`${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 	const start = new Date(event.starts_at);
 	const end = new Date(
 		start.getFullYear(),
 		start.getMonth(),
 		start.getDate() + 1,
 	);
-	// L'orario si perde nell'evento giornaliero: lo riportiamo in testa alla descrizione.
 	const description = [
 		`${t("form.startsAt")}: ${fmtLongDate(event.starts_at)}, ${fmtTime(event.starts_at)}`,
 		event.description,
@@ -237,7 +254,7 @@ function toIcs(event) {
 		"PRODID:-//Events Planner//EN",
 		"BEGIN:VEVENT",
 		`UID:${event.id}@events-planner`,
-		`DTSTAMP:${stamp(new Date())}`,
+		`DTSTAMP:${new Date().toISOString().replace(/[-:]|\.\d{3}/g, "")}`,
 		`DTSTART;VALUE=DATE:${day(start)}`,
 		`DTEND;VALUE=DATE:${day(end)}`,
 		`SUMMARY:${text(event.title)}`,
@@ -253,7 +270,7 @@ function toIcs(event) {
 const slug = (value) =>
 	value
 		.normalize("NFD")
-		.replace(/[̀-ͯ]/g, "")
+		.replace(/\p{Diacritic}/gu, "")
 		.replace(/[^\w]+/g, "-")
 		.replace(/^-|-$/g, "")
 		.toLowerCase() || "event";
@@ -263,9 +280,15 @@ const slug = (value) =>
 
 function viewLogin() {
 	return [
-		html` <div class="auth">
+		html`<div class="auth">
 			<form class="card auth-card" data-submit="login">
-				<div class="auth-logo">${icon("calendar")}</div>
+				<img
+					class="auth-logo"
+					src="favicon.svg"
+					alt=""
+					width="48"
+					height="48"
+				/>
 				<div>
 					<h1>${t("login.title")}</h1>
 					<p class="muted">${t("login.subtitle")}</p>
@@ -322,40 +345,36 @@ async function viewEvents() {
 	}
 
 	return [
-		html` <header class="page-head">
-				<div>
-					<h1>${t("events.title")}</h1>
-					<p class="muted">
-						${events.length
-							? tn("events.count", events.length)
-							: t("events.subtitle")}
-					</p>
-				</div>
-				<a
-					class="btn btn-primary fab"
-					href="#/new"
-					aria-label="${t("events.new")}"
-					>${icon("plus")}<span>${t("events.new")}</span></a
-				>
-			</header>
-			${events.length
-				? groups.map(
-						(g) =>
-							html` <section class="day-group">
-								<h2 class="group-label">${g.label}</h2>
-								<ul class="event-list">
-									${g.events.map(eventCard)}
-								</ul>
-							</section>`,
-					)
-				: emptyState(
-						"calendar",
-						t("events.emptyTitle"),
-						t("events.empty"),
-						html`<a class="btn btn-primary" href="#/new"
-							>${icon("plus")}${t("events.new")}</a
-						>`,
-					)}`,
+		html`${pageHead(
+			t("events.title"),
+			events.length
+				? tn("events.count", events.length)
+				: t("events.subtitle"),
+			html`<a
+				class="btn btn-primary fab"
+				href="#/new"
+				aria-label="${t("events.new")}"
+				>${icon("plus")}<span>${t("events.new")}</span></a
+			>`,
+		)}
+		${events.length
+			? groups.map(
+					(g) =>
+						html`<section class="day-group">
+							<h2 class="group-label">${g.label}</h2>
+							<ul class="event-list">
+								${g.events.map(eventCard)}
+							</ul>
+						</section>`,
+				)
+			: emptyState(
+					"calendar",
+					t("events.emptyTitle"),
+					t("events.empty"),
+					html`<a class="btn btn-primary" href="#/new"
+						>${icon("plus")}${t("events.new")}</a
+					>`,
+				)}`,
 	];
 }
 
@@ -365,7 +384,7 @@ function eventCard(event) {
 		.filter((r) => r.status === "yes")
 		.sort(byName);
 	const count = tally(event.responses);
-	return html` <li>
+	return html`<li>
 		<a class="card event-card" href="#/event/${event.id}">
 			${dateTile(event.starts_at)}
 			<div class="event-card-body">
@@ -429,13 +448,12 @@ async function viewEvent(id) {
 	const items = [...event.items].sort((a, b) =>
 		a.created_at.localeCompare(b.created_at),
 	);
-	const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ?? "")}`;
 	const reload = () => show(viewEvent, id);
 
 	const proposalRow = (p) => {
 		const myVote = p.votes.find((v) => v.user_id === me.id)?.value ?? 0;
 		const total = score(p);
-		return html` <li class="row proposal">
+		return html`<li class="row proposal">
 			<div class="grow">
 				${p.starts_at &&
 				html`<div class="row-line">
@@ -496,21 +514,13 @@ async function viewEvent(id) {
 					${icon("check")}${t("proposals.adopt")}
 				</button>`}
 				${(canManage || p.created_by === me.id) &&
-				html`<button
-					class="btn-icon danger"
-					data-action="deleteProposal"
-					data-id="${p.id}"
-					title="${t("common.delete")}"
-					aria-label="${t("common.delete")}"
-				>
-					${icon("trash")}
-				</button>`}
+				deleteButton("deleteProposal", p.id)}
 			</div>
 		</li>`;
 	};
 
 	const itemRow = (item) =>
-		html` <li class="row item">
+		html`<li class="row">
 			${item.claimer
 				? avatar(item.claimer.display_name, item.claimed_by)
 				: html`<span class="item-icon">${icon("package")}</span>`}
@@ -544,22 +554,14 @@ async function viewEvent(id) {
 					${t("items.unclaim")}
 				</button>`}
 				${(canManage || item.created_by === me.id) &&
-				html`<button
-					class="btn-icon danger"
-					data-action="deleteItem"
-					data-id="${item.id}"
-					title="${t("common.delete")}"
-					aria-label="${t("common.delete")}"
-				>
-					${icon("trash")}
-				</button>`}
+				deleteButton("deleteItem", item.id)}
 			</div>
 		</li>`;
 
 	return [
-		html` <a class="back" href="#/">${icon("back")}${t("event.back")}</a>
+		html`${backLink("#/", t("event.back"))}
 			<div class="event-layout">
-				<div class="col col-main">
+				<div class="col">
 					<article class="card panel hero">
 						<div class="hero-head">
 							${dateTile(event.starts_at, "date-tile-lg")}
@@ -596,7 +598,9 @@ async function viewEvent(id) {
 								<div>
 									<strong>${event.location}</strong>
 									<a
-										href="${mapsUrl}"
+										href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+											event.location,
+										)}"
 										target="_blank"
 										rel="noopener"
 										>${t("event.openMap")}</a
@@ -611,7 +615,7 @@ async function viewEvent(id) {
 								${icon("download")}${t("event.addToCalendar")}
 							</button>
 							${canManage &&
-							html` <a
+							html`<a
 									class="btn btn-sm"
 									href="#/event/${event.id}/edit"
 									>${icon("edit")}${t("event.edit")}</a
@@ -692,9 +696,11 @@ async function viewEvent(id) {
 					</section>
 				</div>
 
-				<aside class="col col-side">
+				<aside class="col">
 					<section class="card panel rsvp">
-						<h2 class="card-title">${t("rsvp.title")}</h2>
+						<h2 class="card-title">
+							${icon("calendarCheck")}${t("rsvp.title")}
+						</h2>
 						<div
 							class="rsvp-options"
 							role="group"
@@ -702,7 +708,7 @@ async function viewEvent(id) {
 						>
 							${STATUSES.map(
 								(s) =>
-									html` <button
+									html`<button
 										class="rsvp-option ${s}"
 										data-action="respond"
 										data-status="${s}"
@@ -720,7 +726,7 @@ async function viewEvent(id) {
 						html`<p class="muted small">${t("rsvp.pending")}</p>`}
 						${mine &&
 						mine.status !== "no" &&
-						html` <div class="guests">
+						html`<div class="guests">
 							<div>
 								<strong>${t("rsvp.bring")}</strong>
 								<div class="muted small">
@@ -767,10 +773,10 @@ async function viewEvent(id) {
 							)}
 						</div>
 						${people.length
-							? html` <ul class="people">
+							? html`<ul class="people">
 										${people.map(
 											(r) =>
-												html` <li>
+												html`<li>
 													${avatar(
 														r.profile?.display_name,
 														r.user_id,
@@ -904,12 +910,13 @@ async function viewEventForm(id) {
 	const back = id ? `#/event/${id}` : "#/";
 
 	return [
-		html` <div class="page-narrow">
-			<a class="back" href="${back}"
-				>${icon("back")}${t(id ? "event.backToEvent" : "event.back")}</a
-			>
+		html`<div class="page-narrow">
+			${backLink(back, t(id ? "event.backToEvent" : "event.back"))}
+			${pageHead(
+				t(id ? "form.editTitle" : "form.newTitle"),
+				t(id ? "form.editSubtitle" : "form.newSubtitle"),
+			)}
 			<form class="card panel" data-submit="save">
-				<h1>${t(id ? "form.editTitle" : "form.newTitle")}</h1>
 				<label class="field">
 					<span>${t("form.title")}</span>
 					<input
@@ -986,12 +993,15 @@ ${event?.description}</textarea
 
 function viewAccount() {
 	return [
-		html` <div class="page-narrow">
-			<h1>${t("account.title")}</h1>
+		html`<div class="page-narrow">
+			${backLink("#/", t("event.back"))}
+			${pageHead(t("account.title"), t("account.subtitle"))}
 			<section class="card profile-card">
 				${avatar(me.display_name, me.id, "xl")}
 				<div class="grow">
-					<strong class="profile-name">${me.display_name}</strong>
+					<strong class="profile-name truncate"
+						>${me.display_name}</strong
+					>
 					<div class="muted truncate">${me.email}</div>
 					${me.is_admin &&
 					html`<span class="pill accent"
@@ -1048,34 +1058,6 @@ function viewAccount() {
 					</button>
 				</div>
 			</form>
-			<section class="card panel">
-				<h2 class="card-title">
-					${icon("globe")}${t("account.language")}
-				</h2>
-				<div
-					class="segmented"
-					role="group"
-					aria-label="${t("account.language")}"
-				>
-					<button
-						data-action="lang"
-						data-lang="it"
-						aria-pressed="${String(lang() === "it")}"
-					>
-						Italiano
-					</button>
-					<button
-						data-action="lang"
-						data-lang="en"
-						aria-pressed="${String(lang() === "en")}"
-					>
-						English
-					</button>
-				</div>
-			</section>
-			<button class="btn btn-danger btn-block" data-action="logout">
-				${icon("logout")}${t("nav.logout")}
-			</button>
 		</div>`,
 		{
 			name: async ({ display_name }) => {
@@ -1096,11 +1078,6 @@ function viewAccount() {
 				form.reset();
 				notify(t("account.passwordChanged"));
 			},
-			lang: ({ lang: value }) => {
-				setLang(value);
-				render();
-			},
-			logout: () => api.signOut(),
 		},
 	];
 }
@@ -1110,12 +1087,9 @@ async function viewAdmin() {
 	const users = await api.admin("list");
 
 	return [
-		html` <header class="page-head">
-				<div>
-					<h1>${t("admin.title")}</h1>
-					<p class="muted">${tn("admin.count", users.length)}</p>
-				</div>
-			</header>
+		html`<div class="page-narrow">
+			${backLink("#/", t("event.back"))}
+			${pageHead(t("admin.title"), tn("admin.count", users.length))}
 
 			<details class="card disclosure" ${users.length <= 1 && "open"}>
 				<summary>
@@ -1174,11 +1148,10 @@ async function viewAdmin() {
 							</div>
 						</div>
 					</div>
-					<label class="check"
-						><input name="is_admin" type="checkbox" /><span
-							>${t("admin.makeAdmin")}</span
-						></label
-					>
+					<label class="check">
+						<input name="is_admin" type="checkbox" />
+						<span>${t("admin.makeAdmin")}</span>
+					</label>
 					<div class="form-actions">
 						<button class="btn btn-primary">
 							${icon("userPlus")}${t("admin.add")}
@@ -1190,7 +1163,7 @@ async function viewAdmin() {
 			<ul class="user-list">
 				${users.map(
 					(u) =>
-						html` <li class="card user-row">
+						html`<li class="card user-row">
 							${avatar(u.display_name, u.id, "lg")}
 							<div class="grow">
 								<strong>${u.display_name ?? "—"}</strong>
@@ -1224,20 +1197,16 @@ async function viewAdmin() {
 									${icon("key")}
 								</button>
 								${u.id !== me.id &&
-								html`<button
-									class="btn-icon danger"
-									data-action="deleteUser"
-									data-id="${u.id}"
-									data-name="${u.display_name}"
-									title="${t("common.delete")}"
-									aria-label="${t("common.delete")}"
-								>
-									${icon("trash")}
-								</button>`}
+								deleteButton(
+									"deleteUser",
+									u.id,
+									u.display_name,
+								)}
 							</div>
 						</li>`,
 				)}
-			</ul>`,
+			</ul>
+		</div>`,
 		{
 			generate: (_, el) => {
 				el.closest(".input-group").querySelector("input").value =
@@ -1257,7 +1226,7 @@ async function viewAdmin() {
 					message: t("admin.createdMessage", {
 						name: user.display_name,
 					}),
-					body: html` <div class="credentials">
+					body: html`<div class="credentials">
 							<div>
 								<span class="muted small"
 									>${t("login.email")}</span

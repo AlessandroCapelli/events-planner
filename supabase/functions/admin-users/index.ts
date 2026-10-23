@@ -13,9 +13,11 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 	auth: { persistSession: false },
 });
 
-async function must(query: PromiseLike<{ error: unknown }>) {
-	const { error } = await query;
+/** Attende una chiamata Supabase e restituisce `data`, oppure lancia l'errore. */
+async function must<T>(query: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
+	const { data, error } = await query;
 	if (error) throw error;
+	return data;
 }
 
 Deno.serve(async (req) => {
@@ -34,40 +36,31 @@ Deno.serve(async (req) => {
 
 		switch (action) {
 			case 'list': {
-				const { data, error } = await db.auth.admin.listUsers({ perPage: 1000 });
-				if (error) throw error;
-				const { data: profiles, error: profilesError } = await db.from('profiles').select('id, display_name, is_admin');
-				if (profilesError) throw profilesError;
+				const { users } = await must(db.auth.admin.listUsers({ perPage: 1000 }));
+				const profiles = await must(db.from('profiles').select('id, display_name, is_admin'));
 				const byId = new Map(profiles.map((p) => [p.id, p]));
-				const users = data.users
-					.map((u) => ({ id: u.id, email: u.email, ...byId.get(u.id) }))
-					.sort((a, b) => (a.display_name ?? '').localeCompare(b.display_name ?? ''));
-				return json(users);
+				return json(
+					users
+						.map((u) => ({ id: u.id, email: u.email, ...byId.get(u.id) }))
+						.sort((a, b) => (a.display_name ?? '').localeCompare(b.display_name ?? '')),
+				);
 			}
 			case 'create': {
-				const { data, error } = await db.auth.admin.createUser({
-					email,
-					password,
-					email_confirm: true,
-					user_metadata: { display_name },
-				});
-				if (error) throw error;
-				if (is_admin) await must(db.from('profiles').update({ is_admin: true }).eq('id', data.user.id));
-				return json({ id: data.user.id });
+				const { user: created } = await must(
+					db.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { display_name } }),
+				);
+				if (is_admin) await must(db.from('profiles').update({ is_admin: true }).eq('id', created.id));
+				return json({ id: created.id });
 			}
 			case 'update': {
 				if (self && is_admin === false) return json({ error: 'You cannot remove your own admin role' }, 400);
-				if (password) {
-					const { error } = await db.auth.admin.updateUserById(id, { password });
-					if (error) throw error;
-				}
+				if (password) await must(db.auth.admin.updateUserById(id, { password }));
 				if (typeof is_admin === 'boolean') await must(db.from('profiles').update({ is_admin }).eq('id', id));
 				return json({ ok: true });
 			}
 			case 'delete': {
 				if (self) return json({ error: 'You cannot delete yourself' }, 400);
-				const { error } = await db.auth.admin.deleteUser(id);
-				if (error) throw error;
+				await must(db.auth.admin.deleteUser(id));
 				return json({ ok: true });
 			}
 			default:

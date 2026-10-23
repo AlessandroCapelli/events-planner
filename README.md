@@ -1,37 +1,38 @@
-# 📅 Events Planner
+# Events Planner
 
 Web app minimale per organizzare gli eventi di un gruppo: chi c'è, chi forse, chi no, quante persone si porta dietro, proposte di data e luogo alternativi e la lista delle cose da portare.
 
 - **Frontend**: HTML/CSS/JS vanilla, senza build, pubblicato su GitHub Pages.
 - **Backend**: [Supabase](https://supabase.com) (piano free): Auth, Postgres con Row Level Security e una Edge Function per la gestione degli utenti.
-- **Privacy**: il codice è pubblico, mentre i dati stanno su Supabase e sono leggibili solo dagli utenti loggati.
-- **Lingue**: italiano (predefinito) e inglese.
+- **Privacy**: il codice è pubblico, i dati stanno su Supabase e sono leggibili solo dagli utenti loggati.
+- **Lingue**: italiano (predefinito) e inglese. Tema scuro, ottimizzato per desktop e mobile.
 
 ## Funzionalità
 
-|                 |                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------ |
-| Accesso         | Gli account li crea solo l'admin; non c'è registrazione pubblica.                          |
-| Eventi          | Elenco dei prossimi eventi, creazione, dettaglio. Un evento sparisce 12 ore dopo l'inizio. |
-| Presenza        | _Ci sono / Forse / Non ci sono_ + numero di accompagnatori (+N).                           |
-| Proposte        | Data e/o luogo alternativi, voto 👍/👎; il creatore dell'evento o un admin può adottarle.  |
-| Cose da portare | Lista condivisa; ognuno può prenotare un oggetto ("Lo porto io").                          |
-| Permessi        | L'evento lo modificano o eliminano solo il creatore e gli admin.                           |
-| Admin           | Crea ed elimina utenti, reimposta password, assegna il ruolo admin.                        |
+|                 |                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Accesso         | Gli account li crea solo l'admin: non c'è registrazione pubblica.                                                                         |
+| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio. Un evento sparisce 12 ore dopo l'inizio.                         |
+| Presenza        | _Ci sono / Forse / Non ci sono_, più il numero di accompagnatori.                                                                         |
+| Proposte        | Data e/o luogo alternativi con voto 👍/👎. Il creatore o un admin può adottarne una: l'evento si aggiorna e le risposte vengono azzerate. |
+| Cose da portare | Lista condivisa; ognuno prenota quello che porta.                                                                                         |
+| Calendario      | Export `.ics` come evento di un giorno intero, con l'orario nella descrizione.                                                            |
+| Permessi        | Un evento lo modificano o eliminano solo il suo creatore e gli admin.                                                                     |
+| Admin           | Crea ed elimina utenti, reimposta password, assegna il ruolo admin.                                                                       |
 
 ## Struttura
 
 ```
-web/                      sito statico (GitHub Pages)
-  index.html  style.css  config.example.js
-  js/app.js               router + viste
-  js/api.js               accesso a Supabase
-  js/i18n.js              traduzioni it/en
-  js/ui.js                template html con escape, toast, date
+web/                         sito statico (GitHub Pages)
+  index.html  style.css  favicon.svg  config.example.js
+  js/app.js                  router e viste
+  js/api.js                  accesso a Supabase
+  js/i18n.js                 traduzioni it/en e formattazione date
+  js/ui.js                   template html con escape, dialog, toast, icone
 supabase/
-  migrations/             schema + RLS
-  functions/admin-users/  Edge Function per la gestione utenti
-.github/workflows/pages.yml
+  migrations/                schema, RLS e funzioni (da eseguire in ordine)
+  functions/admin-users/     Edge Function per la gestione utenti
+.github/workflows/pages.yml  deploy su GitHub Pages
 ```
 
 ## Setup
@@ -39,40 +40,41 @@ supabase/
 ### 1. Supabase
 
 1. Crea un progetto su [supabase.com](https://supabase.com).
-2. **SQL Editor** → incolla ed esegui, in ordine, i file in `supabase/migrations/`
-   (in alternativa, con la CLI: `supabase link --project-ref <ref>` e poi `supabase db push`).
-3. **Authentication → Sign In / Providers** → disattiva _Allow new users to sign up_.
-4. Pubblica la Edge Function:
+2. **SQL Editor**: esegui, in ordine, i file in `supabase/migrations/`. In alternativa, con la CLI: `supabase link --project-ref <ref>`, poi `supabase db push`.
+3. **Authentication → Sign In / Providers**: disattiva _Allow new users to sign up_ e _Allow anonymous sign-ins_.
+4. **Authentication → Providers → Email**: imposta _Minimum password length_ a 8.
+5. Pubblica la Edge Function, dalla dashboard (**Edge Functions → Deploy a new function**, nome `admin-users`) oppure con la CLI:
     ```sh
     npx supabase functions deploy admin-users --project-ref <ref>
     ```
-5. Crea il primo utente da **Authentication → Users → Add user** (con _Auto Confirm User_) e rendilo admin:
+6. Crea il primo utente da **Authentication → Users → Add user** (con _Auto Confirm User_) e rendilo admin:
     ```sql
-    update public.profiles set is_admin = true where id = (select id from auth.users where email = 'tu@example.com');
+    update public.profiles set is_admin = true
+    where id = (select id from auth.users where email = 'tu@example.com');
     ```
 
-### 2. GitHub
+### 2. GitHub Pages
 
-1. Pubblica il repository su GitHub.
-2. **Settings → Secrets and variables → Actions → Variables**: aggiungi
+1. **Settings → Secrets and variables → Actions → Variables** (non _Secrets_):
     - `SUPABASE_URL`: `https://<ref>.supabase.co`
-    - `SUPABASE_ANON_KEY`: la _anon_ / _publishable_ key (è pubblica per design, perché i dati li protegge la RLS)
-3. **Settings → Pages → Source**: _GitHub Actions_.
-4. Fai push su `main`: il workflow genera `config.js` e pubblica `web/`.
-5. In Supabase, **Authentication → URL Configuration → Site URL**: imposta l'URL di Pages.
+    - `SUPABASE_ANON_KEY`: la _publishable_ key (`sb_publishable_…`), pubblica per design
+2. **Settings → Pages → Source**: _GitHub Actions_.
+3. Fai push su `main`: il workflow genera `config.js` e pubblica `web/`.
+4. In Supabase, **Authentication → URL Configuration → Site URL**: imposta l'URL di Pages.
 
 ### Sviluppo locale
 
 ```sh
 cp web/config.example.js web/config.js   # inserisci URL e chiave
-npx serve web                             # oppure: python -m http.server -d web
+npx serve web
 ```
 
 ## Sicurezza
 
-- Ogni tabella ha la RLS attiva; gli utenti anonimi non hanno accesso a nulla.
-- Il client può aggiornare solo colonne specifiche (column grant): per esempio non può modificare `is_admin` né `created_by`.
-- Le operazioni con la service role key avvengono solo nella Edge Function, che controlla che chi la chiama sia admin.
+- Ogni tabella ha la RLS attiva; il ruolo `anon` non ha alcun permesso.
+- Il client può aggiornare solo colonne specifiche: non può toccare `is_admin` né `created_by`.
+- La service role key esiste solo nella Edge Function, che verifica che chi la chiama sia admin.
+- Tutto dipende dal fatto che solo l'admin possa creare account: tieni disattivate registrazione e accesso anonimo (passo 3 del setup).
 
 ## Licenza
 
