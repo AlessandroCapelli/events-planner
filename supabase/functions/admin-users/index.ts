@@ -67,6 +67,8 @@ Deno.serve(async (req) => {
 				return json({ error: `Unknown action: ${action}` }, 400);
 		}
 	} catch (err) {
-		return json({ error: (err as { message?: string }).message ?? String(err) }, 400);
+		// Il codice (es. email_exists, weak_password) permette al client di mostrare un messaggio tradotto.
+		const { message, code } = err as { message?: string; code?: string };
+		return json({ error: message ?? String(err), code }, 400);
 	}
 });

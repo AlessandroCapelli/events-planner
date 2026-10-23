@@ -12,7 +12,8 @@ Web app minimale per organizzare gli eventi di un gruppo: chi c'è, chi forse, c
 |                 |                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Accesso         | Gli account li crea solo l'admin: non c'è registrazione pubblica.                                                                         |
-| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio.                                                                  |
+| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio. Si può creare anche un evento che inizia adesso.                 |
+| Form            | Validazione uniforme: errore sotto il campo, messaggi tradotti e comprensibili, errori di invio in un unico riquadro in fondo al form.    |
 | Invitati        | Un evento è per _tutto il gruppo_ oppure _solo per gli invitati_ scelti dall'organizzatore: gli altri non lo vedono affatto.              |
 | Archivio        | 12 ore dopo l'inizio un evento è concluso: resta in lista sotto i futuri, in sola lettura (solo un admin può eliminarlo).                 |
 | Tempo reale     | Risposte, voti, proposte e cose da portare si aggiornano da sole, senza perdere quello che si sta scrivendo.                              |
@@ -51,11 +52,16 @@ supabase/
 5. Pubblica le Edge Function, dalla dashboard (**Edge Functions → Deploy a new function**) oppure con la CLI:
     - `admin-users`, con _Verify JWT_ **attivo**;
     - `calendar`, con _Verify JWT_ **disattivato**: i calendari non possono autenticarsi, la protezione è il token segreto nel link.
+
     ```sh
     npx supabase functions deploy admin-users --project-ref <ref>
     npx supabase functions deploy calendar --no-verify-jwt --project-ref <ref>
     ```
-    Facoltativo: il secret `APP_URL` (es. `https://utente.github.io/events-planner/`) aggiunge agli eventi del calendario il link all'app.
+
+    Nell'editor della dashboard incolla il contenuto del rispettivo `supabase/functions/<nome>/index.ts`. I file `.sql` vanno nel **SQL Editor**, non nell'editor delle Edge Function.
+
+    In **Edge Functions → Secrets**, aggiungi facoltativamente `APP_URL` con l'URL pubblico dell'app (es. `https://utente.github.io/events-planner/`): aggiunge agli eventi del calendario il link all'app. `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` sono già forniti da Supabase alle funzioni; la service role non va inserita nel frontend né nelle variabili GitHub Pages. Il token personale del calendario viene generato dall'app e non va configurato come secret.
+
 6. Crea il primo utente da **Authentication → Users → Add user** (con _Auto Confirm User_) e rendilo admin:
     ```sql
     update public.profiles set is_admin = true
@@ -71,7 +77,7 @@ supabase/
 3. Fai push su `main`: il workflow genera `config.js` e pubblica `web/`.
 4. In Supabase, **Authentication → URL Configuration → Site URL**: imposta l'URL di Pages.
 
-### Sviluppo locale
+### Avvio locale
 
 ```sh
 cp web/config.example.js web/config.js   # inserisci URL e chiave
@@ -82,7 +88,7 @@ npx serve web
 
 - Ogni tabella ha la RLS attiva; il ruolo `anon` non ha alcun permesso.
 - **Chi vede cosa** è deciso in un solo punto, `event_visible_to()`: eventi di gruppo per tutti, eventi su invito per organizzatore, invitati e admin. Lo usano RLS (eventi, risposte, proposte, voti, oggetti, inviti), Realtime e calendario, quindi non possono divergere.
-- Eventi e invitati si scrivono solo tramite `save_event()`, che verifica permessi e date; chi viene tolto dagli invitati perde anche risposte, voti e prenotazioni.
+- Eventi e invitati si scrivono solo tramite `save_event()`, che verifica permessi e date (un evento si crea o modifica finché è aperto, cioè iniziato da meno di 12 ore) e risponde con codici che l'app traduce; chi viene tolto dagli invitati perde anche risposte, voti e prenotazioni.
 - Realtime non applica la RLS alle cancellazioni e ne invia la chiave primaria a tutti: per questo inviti, risposte e voti hanno chiavi surrogate casuali, che non rivelano chi era invitato a un evento privato.
 - Il calendario usa un token casuale (244 bit) per utente, leggibile solo dal proprietario; rigenerarlo invalida subito il vecchio link. Il feed è generato con la service role solo dalla Edge Function.
 - Il client può aggiornare solo colonne specifiche: non può toccare `is_admin` né `created_by`.

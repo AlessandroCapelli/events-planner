@@ -18,6 +18,7 @@ import {
 	ask,
 	avatar,
 	downloadFile,
+	FieldError,
 	fromInput,
 	html,
 	icon,
@@ -34,7 +35,6 @@ const STATUS_ICON = { yes: "check", maybe: "help", no: "x" };
 const MAX_GUESTS = 20;
 const PAST_PAGE = 20;
 const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
-const NOT_BLANK = ".*\\S.*";
 
 /** Profilo dell'utente loggato (con email), o null. */
 let me = null;
@@ -293,13 +293,28 @@ const setInvitees = (form, checked) => {
 		'input[name="invitees"]:not(:disabled)',
 	))
 		box.checked = checked;
+	// Come un clic dell'utente: aggiorna lo stato del form (es. toglie l'errore "nessun invitato").
+	form.querySelector('input[name="invitees"]')?.dispatchEvent(
+		new Event("input", { bubbles: true }),
+	);
 };
 
-/** Messaggio comprensibile per gli errori di save_event (il database risponde con un codice). */
-const saveError = (err) =>
-	({ event_in_past: t("form.pastDate"), not_allowed: t("form.notAllowed") })[
-		err.message
-	] ?? err.message;
+/** Gli errori di save_event arrivano come codice: li si traduce, legandoli al campo quando possibile. */
+function eventSaveError(err) {
+	if (err.message === "event_in_past")
+		return new FieldError("starts_at", t("validation.eventEnded"));
+	if (err.message === "not_allowed") return new Error(t("form.notAllowed"));
+	return err;
+}
+
+/** Errori di Supabase Auth sulle password, riportati sul campo password. */
+function passwordError(err, field = "password") {
+	if (err.code === "same_password")
+		return new FieldError(field, t("validation.samePassword"));
+	if (err.code === "weak_password")
+		return new FieldError(field, t("validation.weakPassword"));
+	return err;
+}
 
 /** Evento "tutto il giorno": l'orario, che si perderebbe, va in testa alla descrizione. */
 function toIcs(event) {
@@ -485,7 +500,6 @@ function viewLogin() {
 						required
 					/>
 				</label>
-				<p class="form-error" role="alert" hidden></p>
 				<button class="btn btn-primary btn-block">
 					${t("login.submit")}
 				</button>
@@ -493,15 +507,13 @@ function viewLogin() {
 			</form>
 		</div>`,
 		{
-			login: async ({ email, password }, form) => {
-				const error = form.querySelector(".form-error");
-				error.hidden = true;
+			login: async ({ email, password }) => {
 				try {
 					await api.signIn(email.trim(), password);
 				} catch (err) {
-					error.textContent =
-						err.status === 400 ? t("login.invalid") : err.message;
-					error.hidden = false;
+					throw err.status === 400
+						? new Error(t("login.invalid"))
+						: err;
 				}
 			},
 		},
@@ -958,7 +970,9 @@ async function viewEvent(id) {
 								<input
 									name="starts_at"
 									type="datetime-local"
-									min="${toInput(new Date())}"
+									min="${toInput(
+										new Date(Date.now() + 60e3),
+									)}"
 								/>
 							</label>
 							<label class="field">
@@ -996,14 +1010,15 @@ async function viewEvent(id) {
 							class="add-form single"
 							data-submit="addItem"
 						>
-							<input
-								name="label"
-								required
-								maxlength="120"
-								pattern="${NOT_BLANK}"
-								placeholder="${t("items.placeholder")}"
-								aria-label="${t("items.title")}"
-							/>
+							<label class="field">
+								<input
+									name="label"
+									required
+									maxlength="120"
+									placeholder="${t("items.placeholder")}"
+									aria-label="${t("items.title")}"
+								/>
+							</label>
 							<button class="btn" aria-label="${t("items.add")}">
 								${icon("plus")}<span class="hide-xs"
 									>${t("items.add")}</span
@@ -1161,7 +1176,7 @@ async function viewEvent(id) {
 			},
 			propose: async ({ starts_at, location: place }) => {
 				if (!starts_at && !place.trim())
-					return notify(t("proposals.hint"), true);
+					throw new Error(t("proposals.hint"));
 				await api.addProposal(id, {
 					starts_at: starts_at ? fromInput(starts_at) : null,
 					location: place.trim() || null,
@@ -1244,7 +1259,6 @@ async function viewEventForm(id) {
 						name="title"
 						required
 						maxlength="120"
-						pattern="${NOT_BLANK}"
 						value="${event?.title}"
 						placeholder="${t("form.titlePlaceholder")}"
 					/>
@@ -1256,7 +1270,7 @@ async function viewEventForm(id) {
 						type="datetime-local"
 						required
 						value="${event && toInput(new Date(event.starts_at))}"
-						${!id && html`min="${toInput(new Date())}"`}
+						min="${toInput(new Date(openSince()))}"
 					/>
 				</label>
 				<label class="field">
@@ -1361,7 +1375,6 @@ ${event?.description}</textarea
 						</ul>
 					</div>
 				</fieldset>
-				<p class="form-error" role="alert" hidden></p>
 				<div class="form-actions">
 					<a class="btn btn-ghost" href="${back}"
 						>${t("common.cancel")}</a
@@ -1376,40 +1389,28 @@ ${event?.description}</textarea
 			selectAll: (_, el) => setInvitees(el.form, true),
 			selectNone: (_, el) => setInvitees(el.form, false),
 			save: async (values, form) => {
-				const error = form.querySelector(".form-error");
-				const fail = (message) => {
-					error.textContent = message;
-					error.hidden = false;
-				};
-				error.hidden = true;
+				const invitees = new FormData(form).getAll("invitees");
+				const inviteOnly = values.audience === "invited";
+				if (inviteOnly && !invitees.length)
+					throw new FieldError(
+						"invitees",
+						t("audience.noneSelected"),
+					);
 				const data = {
 					title: values.title.trim(),
 					starts_at: fromInput(values.starts_at),
 					location: values.location.trim() || null,
 					description: values.description.trim() || null,
-					invite_only: values.audience === "invited",
+					invite_only: inviteOnly,
 				};
-				// Safari ignora `min` sui campi data: il controllo va fatto qui (il database lo ripete).
-				if (
-					id
-						? isPast(data.starts_at)
-						: new Date(data.starts_at) <= new Date()
-				)
-					return fail(t("form.pastDate"));
-				const invitees = new FormData(form).getAll("invitees");
-				if (data.invite_only && !invitees.length)
-					return fail(t("audience.noneSelected"));
+				let savedId;
 				try {
-					const savedId = await api.saveEvent(
-						id ?? null,
-						data,
-						invitees,
-					);
-					notify(t(id ? "common.saved" : "form.created"));
-					location.hash = `#/event/${savedId}`;
+					savedId = await api.saveEvent(id ?? null, data, invitees);
 				} catch (err) {
-					fail(saveError(err));
+					throw eventSaveError(err);
 				}
+				notify(t(id ? "common.saved" : "form.created"));
+				location.hash = `#/event/${savedId}`;
 			},
 		},
 	];
@@ -1509,7 +1510,6 @@ async function viewAccount() {
 						name="display_name"
 						required
 						maxlength="60"
-						pattern="${NOT_BLANK}"
 						value="${me.display_name}"
 					/>
 				</label>
@@ -1538,10 +1538,9 @@ async function viewAccount() {
 						type="password"
 						autocomplete="new-password"
 						required
-						minlength="8"
+						data-match="password"
 					/>
 				</label>
-				<p class="form-error" role="alert" hidden></p>
 				<div class="form-actions">
 					<button class="btn btn-primary">
 						${t("account.changePassword")}
@@ -1589,14 +1588,12 @@ async function viewAccount() {
 				notify(t("common.saved"));
 				render();
 			},
-			password: async ({ password, confirm }, form) => {
-				const error = form.querySelector(".form-error");
-				error.hidden = password === confirm;
-				if (password !== confirm)
-					return void (error.textContent = t(
-						"account.passwordMismatch",
-					));
-				await api.changePassword(password);
+			password: async ({ password }, form) => {
+				try {
+					await api.changePassword(password);
+				} catch (err) {
+					throw passwordError(err);
+				}
 				form.reset();
 				notify(t("account.passwordChanged"));
 			},
@@ -1632,7 +1629,6 @@ async function viewAdmin() {
 								name="display_name"
 								required
 								maxlength="60"
-								pattern="${NOT_BLANK}"
 							/>
 						</label>
 						<label class="field">
@@ -1745,7 +1741,16 @@ async function viewAdmin() {
 					password: form.password,
 					is_admin: form.is_admin === "on",
 				};
-				await api.admin("create", user);
+				try {
+					await api.admin("create", user);
+				} catch (err) {
+					if (err.code === "email_exists")
+						throw new FieldError(
+							"email",
+							t("validation.emailExists"),
+						);
+					throw passwordError(err);
+				}
 				const loginUrl = location.origin + location.pathname;
 				await ask({
 					title: t("admin.createdTitle"),

@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { fmtDate, t } from "./i18n.js";
 
 const ESCAPES = {
 	"&": "&amp;",
@@ -82,6 +82,130 @@ function restore(root, { values, focus }) {
 	}
 }
 
+// ── Validazione dei form ─────────────────────────────────────────────────
+// Un solo validatore per tutta l'app (i form hanno noValidate): messaggi tradotti e coerenti,
+// errore sotto il campo, riepilogo degli errori di invio in un unico riquadro in fondo al form.
+
+/** Errore riferito a un campo: il messaggio compare sotto quel campo. */
+export class FieldError extends Error {
+	constructor(field, message) {
+		super(message);
+		this.field = field;
+	}
+}
+
+/** Messaggio leggibile per errori di rete, permessi e vincoli del database. */
+export function describeError(err) {
+	const message = err?.message ?? String(err);
+	if (
+		err instanceof TypeError ||
+		/failed to fetch|networkerror|load failed/i.test(message)
+	)
+		return t("error.network");
+	if (
+		err?.code === "42501" ||
+		/row-level security|permission denied/i.test(message)
+	)
+		return t("error.forbidden");
+	if (err?.code === "23503") return t("error.gone");
+	if (err?.code === "23505") return t("error.duplicate");
+	return message;
+}
+
+function invalidMessage(el) {
+	if (isToggle(el)) return null;
+	const value = el.value ?? "";
+	if (el.validity.badInput) return t("validation.badInput");
+	if (el.required && !value.trim()) return t("validation.required");
+	if (el.type === "email" && el.validity.typeMismatch)
+		return t("validation.email");
+	if (el.minLength > 0 && value && value.length < el.minLength)
+		return t("validation.tooShort", { n: el.minLength });
+	if (el.maxLength > 0 && value.length > el.maxLength)
+		return t("validation.tooLong", { n: el.maxLength });
+	// I valori datetime-local ("AAAA-MM-GGTHH:MM") si confrontano come stringhe.
+	if (el.min && value && value < el.min)
+		return t("validation.tooEarly", { date: fmtDate(fromInput(el.min)) });
+	if (el.dataset.match && value !== el.form.elements[el.dataset.match].value)
+		return t("validation.mismatch");
+	return null;
+}
+
+const errorBox = (el) => el.closest("fieldset, .field") ?? el.parentElement;
+
+function showFieldError(el, message) {
+	const box = errorBox(el);
+	let note = box.querySelector(":scope > .field-error");
+	if (!note) {
+		note = Object.assign(document.createElement("p"), {
+			className: "field-error",
+			id: `error-${crypto.randomUUID()}`,
+		});
+		box.append(note);
+	}
+	note.innerHTML = html`${icon("alert")}<span>${message}</span>`;
+	el.setAttribute("aria-invalid", "true");
+	el.setAttribute("aria-describedby", note.id);
+}
+
+function clearFieldError(el) {
+	const box = errorBox(el);
+	box.querySelector(":scope > .field-error")?.remove();
+	for (const field of [el, ...box.querySelectorAll("[aria-invalid]")]) {
+		field.removeAttribute("aria-invalid");
+		field.removeAttribute("aria-describedby");
+	}
+}
+
+function showFormError(form, message) {
+	let note = form.querySelector(":scope > .form-error");
+	if (!note) {
+		note = Object.assign(document.createElement("p"), {
+			className: "form-error",
+		});
+		note.setAttribute("role", "alert");
+		const anchor =
+			!form.classList.contains("add-form") &&
+			(form.querySelector(":scope > .form-actions") ??
+				form.querySelector(":scope > button:not([type='button'])"));
+		if (anchor) anchor.before(note);
+		else form.append(note);
+	}
+	note.innerHTML = html`${icon("alert")}<span>${message}</span>`;
+	note.hidden = false;
+}
+
+function clearErrors(form) {
+	for (const el of form.querySelectorAll("[aria-invalid]"))
+		clearFieldError(el);
+	const note = form.querySelector(":scope > .form-error");
+	if (note) note.hidden = true;
+}
+
+/** Valida tutti i campi; mostra gli errori e porta il focus sul primo. */
+function validate(form) {
+	let first = null;
+	for (const el of form.elements) {
+		if (!el.name || el.disabled) continue;
+		const message = invalidMessage(el);
+		if (!message) continue;
+		showFieldError(el, message);
+		first ??= el;
+	}
+	first?.focus();
+	return !first;
+}
+
+function reportFormError(form, err) {
+	if (!form.isConnected) return notify(describeError(err), true);
+	const target = err instanceof FieldError && form.elements[err.field];
+	const field = target instanceof RadioNodeList ? target[0] : target;
+	if (field) {
+		showFieldError(field, err.message);
+		field.focus();
+	} else showFormError(form, describeError(err));
+}
+
 /**
  * Renderizza il markup in root e collega i click su [data-action] e i submit di form[data-submit].
  * Mentre un'azione è in corso le altre vengono ignorate, così i doppi click non generano richieste concorrenti.
@@ -102,7 +226,11 @@ export function mount(root, markup, actions = {}) {
 
 	root.innerHTML = markup;
 	root.dataset.page = page;
+	for (const form of root.querySelectorAll("form[data-submit]"))
+		form.noValidate = true;
 	if (kept) restore(root, kept);
+	// L'errore di un campo sparisce appena lo si corregge.
+	root.oninput = (e) => e.target.form && clearFieldError(e.target);
 	root.onclick = (e) => {
 		const el = e.target.closest("[data-action]");
 		const fn = el && actions[el.dataset.action];
@@ -116,16 +244,22 @@ export function mount(root, markup, actions = {}) {
 		if (!fn) return;
 		e.preventDefault();
 		if (busy) return;
+		clearErrors(form);
+		if (!validate(form)) return;
 		const button = e.submitter;
 		if (button) button.disabled = true;
 		// Un form inviato non va ripristinato dal re-render che segue il salvataggio.
 		form.dataset.sent = "";
-		run(() => fn(Object.fromEntries(new FormData(form)), form)).finally(
-			() => {
-				delete form.dataset.sent;
-				if (button) button.disabled = false;
-			},
-		);
+		run(async () => {
+			try {
+				await fn(Object.fromEntries(new FormData(form)), form);
+			} catch (err) {
+				reportFormError(form, err);
+			}
+		}).finally(() => {
+			delete form.dataset.sent;
+			if (button) button.disabled = false;
+		});
 	};
 }
 
@@ -133,7 +267,7 @@ async function guard(fn) {
 	try {
 		await fn();
 	} catch (err) {
-		notify(err.message ?? String(err), true);
+		notify(describeError(err), true);
 	}
 }
 
@@ -170,6 +304,7 @@ export function ask({
 			<div class="input-group">
 				<input
 					id="dialog-input"
+					name="value"
 					value="${input.value}"
 					required
 					minlength="${input.minlength ?? 1}"
@@ -191,7 +326,7 @@ export function ask({
 		</div>`}
 		<div class="dialog-actions">
 			${cancel &&
-			html`<button class="btn btn-ghost" value="cancel" formnovalidate>
+			html`<button class="btn btn-ghost" value="cancel">
 				${cancel}
 			</button>`}
 			<button
@@ -203,6 +338,14 @@ export function ask({
 		</div>
 	</form>`;
 	dialog.returnValue = "";
+	// Stessa validazione dei form della pagina: "Annulla" chiude sempre, "OK" solo se i campi sono validi.
+	const form = dialog.querySelector("form");
+	form.noValidate = true;
+	form.onsubmit = (e) => {
+		clearErrors(form);
+		if (e.submitter?.value === "ok" && !validate(form)) e.preventDefault();
+	};
+	form.oninput = (e) => clearFieldError(e.target);
 	dialog.showModal();
 
 	return new Promise((resolve) => {

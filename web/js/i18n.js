@@ -60,8 +60,30 @@ const dict = {
 		"audience.members.other": "{n} membri",
 		"people.pending": "In attesa di risposta",
 		"people.noAnswer": "Non hanno risposto",
-		"form.pastDate": "Scegli una data e un'ora future.",
-		"form.notAllowed": "Non puoi modificare questo evento.",
+		"form.notAllowed":
+			"Non puoi modificare questo evento: non sei l'organizzatore oppure è già concluso.",
+		"validation.required": "Campo obbligatorio.",
+		"validation.email":
+			"Inserisci un indirizzo email valido, ad esempio nome@esempio.it.",
+		"validation.tooShort": "Inserisci almeno {n} caratteri.",
+		"validation.tooLong": "Puoi inserire al massimo {n} caratteri.",
+		"validation.tooEarly": "Scegli un momento a partire da {date}.",
+		"validation.badInput":
+			"Data o ora incompleta: compila sia il giorno sia l'orario.",
+		"validation.mismatch": "Le due password non coincidono.",
+		"validation.eventEnded":
+			"Con questo orario l'evento risulterebbe già concluso (è iniziato più di 12 ore fa).",
+		"validation.samePassword":
+			"La nuova password deve essere diversa da quella attuale.",
+		"validation.weakPassword":
+			"Password troppo debole: usane una più lunga e meno prevedibile.",
+		"validation.emailExists": "Esiste già un utente con questa email.",
+		"error.network":
+			"Connessione assente o instabile: controlla la rete e riprova.",
+		"error.forbidden":
+			"Operazione non consentita: l'evento potrebbe essere concluso, non più visibile o non tuo.",
+		"error.gone": "Questo elemento non esiste più: aggiorna la pagina.",
+		"error.duplicate": "Questo elemento esiste già.",
 		"calendar.title": "Calendario sincronizzato",
 		"calendar.hint":
 			"Aggiungi gli eventi che vedi al tuo calendario: si aggiornano da soli. Google li aggiorna ogni poche ore.",
@@ -160,7 +182,6 @@ const dict = {
 		"account.security": "Password",
 		"account.password": "Nuova password",
 		"account.passwordConfirm": "Conferma password",
-		"account.passwordMismatch": "Le password non coincidono.",
 		"account.changePassword": "Cambia password",
 		"account.passwordChanged": "Password aggiornata.",
 		"admin.title": "Utenti",
@@ -262,8 +283,30 @@ const dict = {
 		"audience.members.other": "{n} members",
 		"people.pending": "Waiting for a reply",
 		"people.noAnswer": "Didn't reply",
-		"form.pastDate": "Pick a future date and time.",
-		"form.notAllowed": "You can't edit this event.",
+		"form.notAllowed":
+			"You can't edit this event: you're not the organiser or it has already ended.",
+		"validation.required": "This field is required.",
+		"validation.email":
+			"Enter a valid email address, e.g. name@example.com.",
+		"validation.tooShort": "Enter at least {n} characters.",
+		"validation.tooLong": "You can enter at most {n} characters.",
+		"validation.tooEarly": "Pick a time from {date} onwards.",
+		"validation.badInput":
+			"Incomplete date or time: fill in both the day and the time.",
+		"validation.mismatch": "The two passwords don't match.",
+		"validation.eventEnded":
+			"With this time the event would already be over (it started more than 12 hours ago).",
+		"validation.samePassword":
+			"The new password must be different from the current one.",
+		"validation.weakPassword":
+			"Password too weak: use a longer, less predictable one.",
+		"validation.emailExists": "A user with this email already exists.",
+		"error.network":
+			"No or unstable connection: check your network and try again.",
+		"error.forbidden":
+			"Action not allowed: the event may have ended, no longer be visible to you, or not be yours.",
+		"error.gone": "This item no longer exists: refresh the page.",
+		"error.duplicate": "This item already exists.",
 		"calendar.title": "Synced calendar",
 		"calendar.hint":
 			"Add the events you can see to your calendar: they update on their own. Google refreshes them every few hours.",
@@ -360,7 +403,6 @@ const dict = {
 		"account.security": "Password",
 		"account.password": "New password",
 		"account.passwordConfirm": "Confirm password",
-		"account.passwordMismatch": "Passwords don't match.",
 		"account.changePassword": "Change password",
 		"account.passwordChanged": "Password updated.",
 		"admin.title": "Users",

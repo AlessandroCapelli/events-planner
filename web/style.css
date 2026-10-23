@@ -741,6 +741,7 @@ button {
 
 .event-list {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--sp-3);
 	margin: 0;
 	padding: 0;
@@ -815,7 +816,12 @@ button {
 }
 
 .event-card-foot .pill {
+	max-width: 100%;
+	height: auto;
+	min-height: 24px;
 	margin-left: auto;
+	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
 .when {
@@ -1378,21 +1384,64 @@ input[type="checkbox"] {
 	gap: var(--sp-2);
 }
 
+/* Errori: sotto il campo (field-error) o, per l'invio, in un riquadro in fondo al form (form-error) */
+.field-error,
 .form-error {
-	padding: var(--sp-3);
-	border-radius: var(--r-md);
-	background: var(--no-soft);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--gap-icon);
+	margin: 0;
 	color: var(--no-text);
 	font-size: var(--fs-sm);
+	font-weight: 500;
+	line-height: 1.4;
 }
 
+.field-error .icon,
+.form-error .icon {
+	width: 16px;
+	height: 16px;
+	margin-top: 1px;
+}
+
+.form-error {
+	grid-column: 1 / -1;
+	padding: var(--sp-3);
+	border: 1px solid rgb(239 68 68 / 0.3);
+	border-radius: var(--r-md);
+	background: var(--no-soft);
+}
+
+[aria-invalid="true"]:not(fieldset),
+[aria-invalid="true"]:hover {
+	border-color: var(--no);
+}
+
+[aria-invalid="true"]:focus {
+	border-color: var(--no);
+	box-shadow: 0 0 0 3px var(--no-soft);
+}
+
+fieldset .field-error {
+	margin-top: var(--sp-2);
+}
+
+fieldset:has(.field-error) .invitee-list {
+	border-color: var(--no);
+}
+
+/* Allineati in alto: un errore sotto un campo non sposta il pulsante */
 .add-form {
 	display: grid;
 	grid-template-columns: 1fr 1fr auto;
-	align-items: end;
+	align-items: start;
 	gap: var(--sp-3);
 	padding-top: var(--sp-4);
 	border-top: 1px solid var(--border);
+}
+
+.add-form:not(.single)>.btn {
+	margin-top: calc(var(--fs-sm) * 1.5 + var(--sp-2));
 }
 
 .add-form.single {
@@ -2131,6 +2180,10 @@ fieldset.field>legend {
 	.add-form,
 	.field-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.add-form:not(.single)>.btn {
+		margin-top: 0;
 	}
 
 	.add-form.single {

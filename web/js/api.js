@@ -180,7 +180,9 @@ export async function admin(action, payload = {}) {
 	});
 	if (error) {
 		const body = await error.context?.json?.().catch(() => null);
-		throw new Error(body?.error ?? error.message);
+		throw Object.assign(new Error(body?.error ?? error.message), {
+			code: body?.code,
+		});
 	}
 	return data;
 }
