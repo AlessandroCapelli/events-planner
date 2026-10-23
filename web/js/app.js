@@ -25,6 +25,7 @@ import {
 	mount,
 	notify,
 	randomPassword,
+	resetMount,
 	toInput,
 } from "./ui.js";
 
@@ -40,10 +41,27 @@ const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
 let me = null;
 /** Contatore di navigazione: scarta le viste caricate dopo che l'utente ha già cambiato pagina. */
 let seq = 0;
+let pageVersion = 0;
+let authVersion = 0;
+
+// Ogni callback conserva la pagina e la sessione che l'hanno avviata.
+function pageScope() {
+	const page = pageVersion;
+	const auth = authVersion;
+	const hash = location.hash;
+	return () =>
+		page === pageVersion && auth === authVersion && hash === location.hash;
+}
+
+function refreshView(view, args = []) {
+	const current = pageScope();
+	return () => (current() ? show(view, args, { quiet: true }) : undefined);
+}
 /** Quanti eventi conclusi mostrare in lista ("Mostra eventi più vecchi" ne aggiunge altri). */
 let pastLimit = PAST_PAGE;
 /** Chiude l'iscrizione in tempo reale della pagina corrente. */
 let stopLive = () => {};
+let rescheduleLive = () => {};
 
 // `live` elenca le tabelle da osservare ([tabella, filtro?]) per aggiornare la pagina in tempo reale.
 const routes = [
@@ -77,6 +95,7 @@ const routes = [
  */
 async function show(view, args = [], { quiet = false } = {}) {
 	const current = ++seq;
+	const inPage = pageScope();
 	let result;
 	try {
 		result = await view(...args);
@@ -84,31 +103,106 @@ async function show(view, args = [], { quiet = false } = {}) {
 		if (quiet) return;
 		result = [errorState(err.message)];
 	}
-	if (current === seq && result) mount(app, ...result);
+	if (current === seq && inPage() && result) {
+		mount(app, ...result);
+		rescheduleLive();
+	}
 }
 
 /** Aggiorna la pagina quando cambiano le tabelle osservate, quando la scheda torna visibile e dopo una riconnessione. */
 function goLive(bindings, refresh) {
 	let timer;
+	let poll;
+	let stopped = false;
+	let running = false;
+	const current = pageScope();
+	const update = async () => {
+		if (stopped || !current() || document.visibilityState !== "visible")
+			return;
+		if (running) return schedule();
+		running = true;
+		try {
+			const profile = await api.getProfile(me.id);
+			if (!current() || stopped) return;
+			if (!profile) return await api.signOut();
+			if (
+				profile.display_name !== me.display_name ||
+				profile.is_admin !== me.is_admin
+			) {
+				me = { ...profile, email: me.email };
+				renderNav();
+			}
+			await refresh();
+		} catch {
+			// Offline: conserva la pagina e ritenta alla prossima rivalidazione.
+		} finally {
+			running = false;
+		}
+	};
 	// Un'azione tocca spesso più righe (es. adottare una proposta): un solo refresh per raffica.
 	const schedule = () => {
 		clearTimeout(timer);
-		timer = setTimeout(refresh, 250);
+		timer = setTimeout(update, 250);
 	};
+	const tick = async () => {
+		if (stopped) return;
+		await update();
+		if (!stopped) rescheduleLive();
+	};
+	rescheduleLive = () => {
+		clearTimeout(poll);
+		if (!stopped) poll = setTimeout(tick, nextRefreshDelay());
+	};
+	rescheduleLive();
 	const onVisible = () =>
 		document.visibilityState === "visible" && schedule();
 	const unsubscribe = api.subscribe(bindings, schedule);
 	document.addEventListener("visibilitychange", onVisible);
 	stopLive = () => {
+		stopped = true;
 		clearTimeout(timer);
+		clearTimeout(poll);
 		unsubscribe();
 		document.removeEventListener("visibilitychange", onVisible);
 		stopLive = () => {};
+		rescheduleLive = () => {};
 	};
 }
 
+// Rivalida i permessi entro 30s e aggiorna esattamente inizio/fine e mezzanotte.
+function nextRefreshDelay() {
+	const now = Date.now();
+	const date = new Date(now);
+	const midnight = new Date(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate() + 1,
+	).getTime();
+	const boundaries = [
+		midnight,
+		...[...app.querySelectorAll("[data-starts-at]")].flatMap((el) => {
+			const start = new Date(el.dataset.startsAt).getTime();
+			return [start, start + 12 * 36e5];
+		}),
+	];
+	return Math.max(
+		25,
+		Math.min(
+			30e3,
+			...boundaries
+				.filter((time) => time > now)
+				.map((time) => time - now + 25),
+		),
+	);
+}
+
 async function render() {
+	++pageVersion;
+	++seq;
 	stopLive();
+	const dialog = document.getElementById("dialog");
+	if (dialog.open) dialog.close();
+	resetMount(app);
 	if (!api.configured)
 		return void mount(app, errorState(t("common.missingConfig")));
 	renderNav();
@@ -121,10 +215,10 @@ async function render() {
 
 	app.innerHTML = skeleton();
 	window.scrollTo(0, 0);
-	if (route.live)
-		goLive(route.live(...args), () =>
-			show(route.view, args, { quiet: true }),
-		);
+	goLive(
+		route.live ? route.live(...args) : [["profiles", `id=eq.${me.id}`]],
+		() => show(route.view, args, { quiet: true }),
+	);
 	await show(route.view, args);
 }
 
@@ -442,8 +536,8 @@ function shareEvent(event) {
 							${target.id !== "email" &&
 							html`target="_blank" rel="noopener"`}
 						>
-							<span class="share-icon">${icon(target.icon)}</span
-							>${target.label}
+							<span class="share-icon">${icon(target.icon)}</span>
+							${target.label}
 						</a>`,
 				)}
 				${"share" in navigator &&
@@ -544,6 +638,7 @@ function viewLogin() {
 }
 
 async function viewEvents() {
+	const reload = refreshView(viewEvents);
 	const since = openSince();
 	const [upcoming, past] = await Promise.all([
 		api.listUpcoming(since),
@@ -595,7 +690,7 @@ async function viewEvents() {
 				)}
 				${hasMore &&
 				html`<button
-					class="btn btn-ghost btn-block more"
+					class="btn btn-ghost btn-block events-more"
 					data-action="more"
 				>
 					${t("events.more")}
@@ -605,7 +700,7 @@ async function viewEvents() {
 		{
 			more: () => {
 				pastLimit += PAST_PAGE;
-				return show(viewEvents);
+				return reload();
 			},
 		},
 	];
@@ -626,7 +721,11 @@ function eventCard(event) {
 			? tn("people.going", count.yes)
 			: t("people.nobody");
 	return html`<li>
-		<a class="card event-card ${past && "past"}" href="#/event/${event.id}">
+		<a
+			class="card event-card ${past && "past"}"
+			href="#/event/${event.id}"
+			data-starts-at="${event.starts_at}"
+		>
 			${dateTile(event.starts_at)}
 			<div class="event-card-body">
 				<h3>${event.title}</h3>
@@ -665,10 +764,12 @@ function eventCard(event) {
 }
 
 async function viewEvent(id) {
+	const current = pageScope();
 	const [event, members] = await Promise.all([
 		api.getEvent(id),
 		api.listProfiles(),
 	]);
+	if (!current()) return;
 	if (!event) {
 		return [
 			emptyState(
@@ -705,7 +806,7 @@ async function viewEvent(id) {
 		: members;
 	const answered = new Set(event.responses.map((r) => r.user_id));
 	const pending = audience.filter((m) => !answered.has(m.id));
-	const reload = () => show(viewEvent, [id]);
+	const reload = refreshView(viewEvent, [id]);
 
 	const proposalRow = (p) => {
 		const myVote = p.votes.find((v) => v.user_id === me.id)?.value ?? 0;
@@ -873,7 +974,10 @@ async function viewEvent(id) {
 			</p>`}
 			<div class="event-layout">
 				<div class="col">
-					<article class="card panel hero ${closed && "past"}">
+					<article
+						class="card panel hero ${closed && "past"}"
+						data-starts-at="${event.starts_at}"
+					>
 						<div class="hero-head">
 							${dateTile(event.starts_at, "date-tile-lg")}
 							<div class="hero-title">
@@ -987,7 +1091,11 @@ async function viewEvent(id) {
 							${proposals.map(proposalRow)}
 						</ul>`}
 						${!closed &&
-						html`<form class="add-form" data-submit="propose">
+						html`<form
+							class="add-form"
+							data-submit="propose"
+							data-reset-on-success
+						>
 							<label class="field">
 								<span>${t("proposals.date")}</span>
 								<input
@@ -1032,6 +1140,7 @@ async function viewEvent(id) {
 						html`<form
 							class="add-form single"
 							data-submit="addItem"
+							data-reset-on-success
 						>
 							<label class="field">
 								<input
@@ -1134,7 +1243,7 @@ async function viewEvent(id) {
 									${t("people.empty")}
 								</p>`}
 						${pending.length > 0 &&
-						html`<div class="pending">
+						html`<div class="pending-people">
 							<h3 class="pending-title">
 								${t(
 									closed
@@ -1174,8 +1283,9 @@ async function viewEvent(id) {
 					confirm: t("common.delete"),
 					danger: true,
 				});
-				if (!ok) return;
+				if (!ok || !current()) return;
 				await api.deleteEvent(id);
+				if (!current()) return;
 				notify(t("event.deleted"));
 				location.hash = "#/";
 			},
@@ -1223,8 +1333,12 @@ async function viewEvent(id) {
 					message: t("proposals.confirmAdoptHint"),
 					confirm: t("proposals.adopt"),
 				});
-				if (!ok) return;
-				await api.adoptProposal(pid);
+				if (!ok || !current()) return;
+				try {
+					await api.adoptProposal(pid);
+				} catch (err) {
+					throw eventSaveError(err);
+				}
 				notify(t("proposals.adopted"));
 				await reload();
 			},
@@ -1254,10 +1368,12 @@ async function viewEvent(id) {
 }
 
 async function viewEventForm(id) {
+	const current = pageScope();
 	const [event, members] = await Promise.all([
 		id ? api.getEvent(id) : null,
 		api.listProfiles(),
 	]);
+	if (!current()) return;
 	if (id && !(event && (me.is_admin || event.created_by === me.id)))
 		return void (location.hash = "#/");
 	if (event && isPast(event.starts_at))
@@ -1432,6 +1548,7 @@ ${event?.description}</textarea
 				} catch (err) {
 					throw eventSaveError(err);
 				}
+				if (!current()) return;
 				notify(t(id ? "common.saved" : "form.created"));
 				location.hash = `#/event/${savedId}`;
 			},
@@ -1440,7 +1557,10 @@ ${event?.description}</textarea
 }
 
 async function viewAccount() {
+	const current = pageScope();
+	const reload = refreshView(viewAccount);
 	const token = await api.getCalendarToken();
+	if (!current()) return;
 	const feedUrl = token && api.calendarFeedUrl(token, lang());
 	const webcalUrl = feedUrl?.replace(/^https:/, "webcal:");
 	const calendarCard = html`<section class="card panel">
@@ -1543,7 +1663,11 @@ async function viewAccount() {
 					<button class="btn btn-primary">${t("common.save")}</button>
 				</div>
 			</form>
-			<form class="card panel" data-submit="password">
+			<form
+				class="card panel"
+				data-submit="password"
+				data-reset-on-success
+			>
 				<h2 class="card-title">
 					${icon("key")}${t("account.security")}
 				</h2>
@@ -1599,7 +1723,7 @@ async function viewAccount() {
 				}),
 			enableCalendar: async () => {
 				await api.rotateCalendarToken();
-				await show(viewAccount);
+				await reload();
 			},
 			copyCalendar: async () => {
 				await navigator.clipboard.writeText(feedUrl);
@@ -1611,10 +1735,10 @@ async function viewAccount() {
 					message: t("calendar.rotateHint"),
 					confirm: t("calendar.rotate"),
 				});
-				if (!ok) return;
+				if (!ok || !current()) return;
 				await api.rotateCalendarToken();
 				notify(t("calendar.rotated"));
-				await show(viewAccount);
+				await reload();
 			},
 			disableCalendar: async () => {
 				const ok = await ask({
@@ -1623,25 +1747,26 @@ async function viewAccount() {
 					confirm: t("calendar.disable"),
 					danger: true,
 				});
-				if (!ok) return;
+				if (!ok || !current()) return;
 				await api.deleteCalendarToken();
 				notify(t("calendar.disabled"));
-				await show(viewAccount);
+				await reload();
 			},
 			name: async ({ display_name }) => {
 				const name = display_name.trim();
 				await api.updateProfile(me.id, name);
+				if (!current()) return;
 				me.display_name = name;
 				notify(t("common.saved"));
-				render();
+				renderNav();
+				await reload();
 			},
-			password: async ({ password }, form) => {
+			password: async ({ password }) => {
 				try {
 					await api.changePassword(password);
 				} catch (err) {
 					throw passwordError(err);
 				}
-				form.reset();
 				notify(t("account.passwordChanged"));
 			},
 		},
@@ -1649,8 +1774,11 @@ async function viewAccount() {
 }
 
 async function viewAdmin() {
+	const current = pageScope();
+	const reload = refreshView(viewAdmin);
 	if (!me.is_admin) return void (location.hash = "#/");
 	const users = await api.admin("list");
+	if (!current()) return;
 
 	return [
 		html`<div class="page-narrow">
@@ -1667,6 +1795,7 @@ async function viewAdmin() {
 				<form
 					class="disclosure-body"
 					data-submit="create"
+					data-reset-on-success
 					autocomplete="off"
 				>
 					<div class="field-grid">
@@ -1694,6 +1823,7 @@ async function viewAdmin() {
 							<div class="input-group">
 								<input
 									id="new-password"
+									data-generate-on-success
 									name="password"
 									required
 									minlength="8"
@@ -1799,6 +1929,7 @@ async function viewAdmin() {
 					throw passwordError(err);
 				}
 				const loginUrl = location.origin + location.pathname;
+				if (!current()) return;
 				await ask({
 					title: t("admin.createdTitle"),
 					message: t("admin.createdMessage", {
@@ -1831,7 +1962,7 @@ async function viewAdmin() {
 					confirm: t("common.done"),
 					cancel: null,
 				});
-				await show(viewAdmin);
+				await reload();
 			},
 			toggleAdmin: async ({ id }, el) => {
 				try {
@@ -1854,7 +1985,7 @@ async function viewAdmin() {
 					},
 					confirm: t("admin.resetPassword"),
 				});
-				if (!password) return;
+				if (!password || !current()) return;
 				await api.admin("update", { id, password });
 				notify(t("admin.passwordUpdated"));
 			},
@@ -1865,10 +1996,10 @@ async function viewAdmin() {
 					confirm: t("common.delete"),
 					danger: true,
 				});
-				if (!ok) return;
+				if (!ok || !current()) return;
 				await api.admin("delete", { id });
 				notify(t("admin.deleted"));
-				await show(viewAdmin);
+				await reload();
 			},
 		},
 	];
@@ -1880,14 +2011,22 @@ window.addEventListener("hashchange", render);
 
 if (api.configured) {
 	api.onUserChange(async (user) => {
+		const version = ++authVersion;
+		++seq;
+		stopLive();
 		me = null;
+		renderNav();
+		resetMount(app);
+		mount(app, skeleton());
 		if (user) {
 			try {
 				const profile = await api.getProfile(user.id);
+				if (version !== authVersion) return;
 				// Utente eliminato dall'admin: la sessione è ancora valida ma il profilo non esiste più.
 				if (!profile) return void api.signOut();
 				me = { ...profile, email: user.email };
 			} catch (err) {
+				if (version !== authVersion) return;
 				stopLive();
 				renderNav();
 				return void mount(app, errorState(err.message));

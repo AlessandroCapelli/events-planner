@@ -9,14 +9,36 @@ const unwrap = ({ data, error }) => {
 	return data;
 };
 
+// Non assumere che il limite Data API sia 1.000: può essere più basso.
+// Si avanza delle righe effettive e si termina solo con una pagina vuota.
+async function allRows(query, limit = Infinity) {
+	const rows = [];
+	while (rows.length < limit) {
+		const end = rows.length + Math.min(200, limit - rows.length) - 1;
+		const page = unwrap(await query().range(rows.length, end));
+		if (!page.length) break;
+		rows.push(...page);
+	}
+	return rows;
+}
+
+async function relatedRows(table, select, column, ids) {
+	const rows = [];
+	for (let offset = 0; offset < ids.length; offset += 100) {
+		const chunk = ids.slice(offset, offset + 100);
+		rows.push(
+			...(await allRows(() =>
+				sb.from(table).select(select).in(column, chunk).order("id"),
+			)),
+		);
+	}
+	return rows;
+}
+
 // Gli hint !<fk> servono perché responses/votes fanno da tabelle ponte verso profiles.
 const EVENT_DETAIL = `
   *,
-  creator:profiles!events_created_by_fkey(display_name),
-  responses(user_id, status, guests, profile:profiles(display_name)),
-  proposals(*, author:profiles!proposals_created_by_fkey(display_name), votes(user_id, value)),
-  items(*, claimer:profiles!items_claimed_by_fkey(display_name)),
-  invitations(user_id)`;
+  creator:profiles!events_created_by_fkey(display_name)`;
 
 /** Invoca cb(user | null) solo quando cambia l'utente loggato (ignora i refresh del token). */
 export function onUserChange(cb) {
@@ -32,7 +54,7 @@ export function onUserChange(cb) {
 
 export const signIn = (email, password) =>
 	sb.auth.signInWithPassword({ email, password }).then(unwrap);
-export const signOut = () => sb.auth.signOut();
+export const signOut = () => sb.auth.signOut().then(unwrap);
 export const changePassword = (password) =>
 	sb.auth.updateUser({ password }).then(unwrap);
 
@@ -41,40 +63,104 @@ export const getProfile = (id) =>
 export const updateProfile = (id, display_name) =>
 	sb.from("profiles").update({ display_name }).eq("id", id).then(unwrap);
 export const listProfiles = () =>
-	sb
-		.from("profiles")
-		.select("id, display_name")
-		.order("display_name")
-		.then(unwrap);
+	allRows(() =>
+		sb
+			.from("profiles")
+			.select("id, display_name")
+			.order("display_name")
+			.order("id"),
+	);
 
-const EVENT_SUMMARY =
-	"id, title, starts_at, location, invite_only, responses(user_id, status, guests, profile:profiles(display_name))";
+const EVENT_SUMMARY = "id, title, starts_at, location, invite_only";
+
+async function summaries(query, limit) {
+	const events = await allRows(query, limit);
+	const responses = await relatedRows(
+		"responses",
+		"id, event_id, user_id, status, guests, profile:profiles(display_name)",
+		"event_id",
+		events.map((e) => e.id),
+	);
+	const byEvent = new Map(events.map((e) => [e.id, []]));
+	for (const response of responses)
+		byEvent.get(response.event_id)?.push(response);
+	return events.map((event) => ({
+		...event,
+		responses: byEvent.get(event.id),
+	}));
+}
 
 /** Eventi ancora aperti (iniziati dopo `since`), dal più vicino. */
 export const listUpcoming = (since) =>
-	sb
-		.from("events")
-		.select(EVENT_SUMMARY)
-		.gt("starts_at", since)
-		.order("starts_at")
-		.then(unwrap);
+	summaries(() =>
+		sb
+			.from("events")
+			.select(EVENT_SUMMARY)
+			.gt("starts_at", since)
+			.order("starts_at")
+			.order("id"),
+	);
 
 /** Eventi conclusi, dal più recente; al massimo `limit`. */
 export const listPast = (since, limit) =>
-	sb
-		.from("events")
-		.select(EVENT_SUMMARY)
-		.lte("starts_at", since)
-		.order("starts_at", { ascending: false })
-		.limit(limit)
-		.then(unwrap);
-export const getEvent = (id) =>
-	sb
+	summaries(
+		() =>
+			sb
+				.from("events")
+				.select(EVENT_SUMMARY)
+				.lte("starts_at", since)
+				.order("starts_at", { ascending: false })
+				.order("id"),
+		limit,
+	);
+export async function getEvent(id) {
+	const event = await sb
 		.from("events")
 		.select(EVENT_DETAIL)
 		.eq("id", id)
 		.maybeSingle()
 		.then(unwrap);
+	if (!event) return null;
+	const [responses, proposals, items, invitations] = await Promise.all([
+		relatedRows(
+			"responses",
+			"id, user_id, status, guests, profile:profiles(display_name)",
+			"event_id",
+			[id],
+		),
+		relatedRows(
+			"proposals",
+			"*, author:profiles!proposals_created_by_fkey(display_name)",
+			"event_id",
+			[id],
+		),
+		relatedRows(
+			"items",
+			"*, claimer:profiles!items_claimed_by_fkey(display_name)",
+			"event_id",
+			[id],
+		),
+		relatedRows("invitations", "id, user_id", "event_id", [id]),
+	]);
+	const votes = await relatedRows(
+		"votes",
+		"id, proposal_id, user_id, value",
+		"proposal_id",
+		proposals.map((p) => p.id),
+	);
+	const byProposal = new Map(proposals.map((p) => [p.id, []]));
+	for (const vote of votes) byProposal.get(vote.proposal_id)?.push(vote);
+	return {
+		...event,
+		responses,
+		items,
+		invitations,
+		proposals: proposals.map((p) => ({
+			...p,
+			votes: byProposal.get(p.id),
+		})),
+	};
+}
 /** Crea (id null) o modifica un evento insieme ai suoi invitati; restituisce l'id. */
 export const saveEvent = (id, event, invitees) =>
 	sb
@@ -142,17 +228,36 @@ export const deleteItem = (id) =>
  */
 export function subscribe(bindings, onChange) {
 	const channel = sb.channel(`live:${crypto.randomUUID()}`);
-	for (const [table, filter] of bindings)
+	for (const [table, filter] of bindings) {
 		channel.on(
 			"postgres_changes",
-			{ event: "*", schema: "public", table, ...(filter && { filter }) },
+			{
+				event: filter ? "INSERT" : "*",
+				schema: "public",
+				table,
+				...(filter && { filter }),
+			},
 			onChange,
 		);
-	let joined = false;
+		if (filter) {
+			channel.on(
+				"postgres_changes",
+				{ event: "UPDATE", schema: "public", table, filter },
+				onChange,
+			);
+			// Con RLS e replica identity predefinita una DELETE ha solo la PK.
+			// Si invalida la vista senza esporre event_id o user_id nelle righe eliminate.
+			channel.on(
+				"postgres_changes",
+				{ event: "DELETE", schema: "public", table },
+				onChange,
+			);
+		}
+	}
 	channel.subscribe((status) => {
 		if (status !== "SUBSCRIBED") return;
-		if (joined) onChange();
-		joined = true;
+		// Recupera anche le modifiche avvenute tra il caricamento e il primo join.
+		onChange();
 	});
 	return () => sb.removeChannel(channel);
 }

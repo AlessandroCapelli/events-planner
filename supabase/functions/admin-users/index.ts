@@ -1,9 +1,10 @@
 // Gestione utenti riservata agli admin: list, create, update, delete.
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type User } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+	'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const json = (body: unknown, status = 200) =>
@@ -14,7 +15,7 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 });
 
 /** Attende una chiamata Supabase e restituisce `data`, oppure lancia l'errore. */
-async function must<T>(query: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
+async function must<T extends { data: unknown; error: unknown }>(query: PromiseLike<T>): Promise<T['data']> {
 	const { data, error } = await query;
 	if (error) throw error;
 	return data;
@@ -22,22 +23,33 @@ async function must<T>(query: PromiseLike<{ data: T; error: unknown }>): Promise
 
 Deno.serve(async (req) => {
 	if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-
-	const token = req.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
-	const { data: { user } } = await db.auth.getUser(token);
-	if (!user) return json({ error: 'Unauthorized' }, 401);
-
-	const { data: caller } = await db.from('profiles').select('is_admin').eq('id', user.id).single();
-	if (!caller?.is_admin) return json({ error: 'Forbidden' }, 403);
+	if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
 	try {
+		const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+		if (!token) return json({ error: 'Unauthorized' }, 401);
+		const { data: { user }, error: authError } = await db.auth.getUser(token);
+		if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+		const caller = await must(db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle());
+		if (!caller?.is_admin) return json({ error: 'Forbidden' }, 403);
+
 		const { action, id, email, password, display_name, is_admin } = await req.json();
 		const self = id === user.id;
 
 		switch (action) {
 			case 'list': {
-				const { users } = await must(db.auth.admin.listUsers({ perPage: 1000 }));
-				const profiles = await must(db.from('profiles').select('id, display_name, is_admin'));
+				const users: User[] = [];
+				for (let page = 1; ; page++) {
+					const batch = await must(db.auth.admin.listUsers({ page, perPage: 200 }));
+					if (!batch.users.length) break;
+					users.push(...batch.users);
+				}
+				const profiles: { id: string; display_name: string; is_admin: boolean }[] = [];
+				for (; ;) {
+					const batch = await must(db.from('profiles').select('id, display_name, is_admin').order('id').range(profiles.length, profiles.length + 199));
+					if (!batch?.length) break;
+					profiles.push(...batch);
+				}
 				const byId = new Map(profiles.map((p) => [p.id, p]));
 				return json(
 					users
@@ -47,9 +59,9 @@ Deno.serve(async (req) => {
 			}
 			case 'create': {
 				const { user: created } = await must(
-					db.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { display_name } }),
+					db.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { display_name }, app_metadata: { initial_admin: is_admin === true } }),
 				);
-				if (is_admin) await must(db.from('profiles').update({ is_admin: true }).eq('id', created.id));
+				if (!created) throw new Error('User creation returned no user');
 				return json({ id: created.id });
 			}
 			case 'update': {

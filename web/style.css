@@ -790,7 +790,7 @@ button {
 	opacity: 0.7;
 }
 
-.more {
+.events-more {
 	margin-top: var(--sp-6);
 }
 
@@ -1367,6 +1367,7 @@ input[type="checkbox"] {
 
 .input-group input {
 	flex: 1;
+	min-width: 0;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -1927,7 +1928,7 @@ fieldset.field>legend {
 	cursor: default;
 }
 
-.pending {
+.pending-people {
 	display: flex;
 	flex-direction: column;
 	gap: var(--sp-2);
@@ -1953,12 +1954,14 @@ fieldset.field>legend {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--sp-2);
-	height: 32px;
+	max-width: 100%;
+	min-height: 32px;
 	padding: 0 var(--sp-3) 0 var(--sp-1);
 	border: 1px solid var(--border);
 	border-radius: var(--r-full);
 	color: var(--text-2);
 	font-size: var(--fs-sm);
+	overflow-wrap: anywhere;
 }
 
 .calendar-apps {

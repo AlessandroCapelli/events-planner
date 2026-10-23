@@ -22,6 +22,7 @@ const dict = {
 		"events.empty":
 			"Crea il primo evento e fai sapere al gruppo cosa bolle in pentola.",
 		"date.today": "Oggi",
+		"date.yesterday": "Ieri",
 		"date.tomorrow": "Domani",
 		"date.live": "In corso",
 		"date.past": "Concluso",
@@ -86,7 +87,7 @@ const dict = {
 		"error.duplicate": "Questo elemento esiste già.",
 		"calendar.title": "Calendario sincronizzato",
 		"calendar.hint":
-			"Aggiungi gli eventi che vedi al tuo calendario: si aggiornano da soli. Google li aggiorna ogni poche ore.",
+			"Gli eventi nuovi si aggiungono e quelli con risposta «Non ci sono» vengono rimossi. Outlook e Google decidono quando aggiornare il calendario: possono servire più di 24 ore.",
 		"calendar.enable": "Attiva calendario",
 		"calendar.apple": "Apple Calendar",
 		"calendar.outlookTitle": "Aggiungi a Outlook",
@@ -104,7 +105,7 @@ const dict = {
 		"calendar.disable": "Disattiva",
 		"calendar.disableConfirm": "Disattivare il calendario?",
 		"calendar.disableHint":
-			"Il link smetterà di funzionare e gli eventi spariranno dal tuo calendario.",
+			"Il link smetterà di aggiornarsi. Per rimuovere gli eventi già scaricati, elimina il calendario anche dalla tua app calendario.",
 		"calendar.disabled": "Calendario disattivato.",
 		"event.back": "Eventi",
 		"event.backToEvent": "Torna all'evento",
@@ -249,6 +250,7 @@ const dict = {
 		"events.empty":
 			"Create the first event and let the group know what's coming up.",
 		"date.today": "Today",
+		"date.yesterday": "Yesterday",
 		"date.tomorrow": "Tomorrow",
 		"date.live": "Happening now",
 		"date.past": "Ended",
@@ -312,7 +314,7 @@ const dict = {
 		"error.duplicate": "This item already exists.",
 		"calendar.title": "Synced calendar",
 		"calendar.hint":
-			"Add the events you can see to your calendar: they update on their own. Google refreshes them every few hours.",
+			"New events are added and events you decline are removed. Outlook and Google control when the calendar refreshes: updates can take more than 24 hours.",
 		"calendar.enable": "Turn on calendar",
 		"calendar.apple": "Apple Calendar",
 		"calendar.outlookTitle": "Add to Outlook",
@@ -330,7 +332,7 @@ const dict = {
 		"calendar.disable": "Turn off",
 		"calendar.disableConfirm": "Turn off the calendar?",
 		"calendar.disableHint":
-			"The link will stop working and the events will disappear from your calendar.",
+			"The link will stop updating. To remove events already downloaded, also remove the calendar from your calendar app.",
 		"calendar.disabled": "Calendar turned off.",
 		"event.back": "Events",
 		"event.backToEvent": "Back to event",
@@ -554,7 +556,8 @@ export function groupLabel(iso) {
 	const date = new Date(iso);
 	if (!isPast(iso)) {
 		const diff = dayDiff(date);
-		if (diff <= 0) return t("date.today");
+		if (diff === 0) return t("date.today");
+		if (diff === -1) return t("date.yesterday");
 		if (diff === 1) return t("date.tomorrow");
 	}
 	return capitalize(fmt({ month: "long", year: "numeric" }).format(date));

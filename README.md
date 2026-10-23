@@ -50,7 +50,7 @@ supabase/
 3. **Authentication → Sign In / Providers**: disattiva _Allow new users to sign up_ e _Allow anonymous sign-ins_.
 4. **Authentication → Providers → Email**: imposta _Minimum password length_ a 8.
 5. Pubblica le Edge Function, dalla dashboard (**Edge Functions → Deploy a new function**) oppure con la CLI:
-    - `admin-users`, con _Verify JWT_ **attivo**;
+    - `admin-users`, con _Verify JWT_ **attivo**: il gateway verifica il JWT; l'handler verifica inoltre l'utente con `auth.getUser()` e il ruolo admin nel database;
     - `calendar`, con _Verify JWT_ **disattivato**: i calendari non possono autenticarsi, la protezione è il token segreto nel link.
 
     ```sh
@@ -91,13 +91,21 @@ npx serve web
 - La funzione `calendar` deve avere **Verify JWT disattivato** anche quando è pubblicata dalla dashboard. Il token personale nel link protegge il feed; il client calendario non invia un header Authorization. `supabase/config.toml` conserva questa impostazione per i deploy CLI.
 - Se Outlook rifiuta il link, aprilo in una finestra privata: deve restituire un calendario che inizia con `BEGIN:VCALENDAR`. Un errore 401 con `Missing authorization header` indica che Verify JWT è ancora attivo; un 404 può indicare un token non valido o una funzione non pubblicata. Dopo la disattivazione del controllo JWT, un token fittizio deve ricevere 404, non 401.
 - Gli aggiornamenti sono gestiti da Outlook e possono richiedere più di 24 ore.
+- Il feed legge i dati correnti a ogni richiesta: include eventi nuovi visibili, esclude quelli con risposta “Non ci sono” e li reinserisce quando rispondi “Ci sono” o “Forse”. Anche gli eventi ancora senza risposta restano inclusi. Un file `.ics` importato è invece una copia indipendente e non viene aggiornato né rimosso automaticamente.
+
+### Campi e aggiornamenti in tempo reale
+
+Le cose da portare e le proposte si svuotano dopo un inserimento riuscito; la password si svuota dopo il cambio riuscito. Creare un utente pulisce nome/email e prepara una nuova password iniziale. Nome profilo e form di modifica mantengono i valori salvati. Gli errori conservano i dati inseriti.
+
+Se scrivi una nuova bozza mentre un invio è ancora in corso, la risposta del server non la cancella. I refresh mantengono le bozze degli altri form e applicano comunque le modifiche degli altri utenti, anche quando un invio locale fallisce. Un errore nel refresh successivo a un salvataggio non fa apparire l'inserimento come fallito e non impedisce la pulizia del campo.
 
 ## Sicurezza
 
 - Ogni tabella ha la RLS attiva; il ruolo `anon` non ha alcun permesso.
-- **Chi vede cosa** è deciso in un solo punto, `event_visible_to()`: eventi di gruppo per tutti, eventi su invito per organizzatore, invitati e admin. Lo usano RLS (eventi, risposte, proposte, voti, oggetti, inviti), Realtime e calendario, quindi non possono divergere.
+- **Chi vede cosa** è deciso in un solo punto, `event_visible_to()`: eventi di gruppo per tutti, eventi su invito per organizzatore, invitati e admin. RLS e calendario applicano questa regola. Il frontend rivalida profilo e vista anche ogni 30 secondi quando visibile, per rilevare revoche che Realtime non può notificare al destinatario escluso.
 - Eventi e invitati si scrivono solo tramite `save_event()`, che verifica permessi e date (un evento si crea o modifica finché è aperto, cioè iniziato da meno di 12 ore) e risponde con codici che l'app traduce; chi viene tolto dagli invitati perde anche risposte, voti e prenotazioni.
 - Realtime non applica la RLS alle cancellazioni e ne invia la chiave primaria a tutti: per questo inviti, risposte e voti hanno chiavi surrogate casuali, che non rivelano chi era invitato a un evento privato.
+- Le sottoscrizioni filtrate separano INSERT/UPDATE da DELETE: le cancellazioni invalidano la vista senza richiedere `REPLICA IDENTITY FULL` o diffondere le colonne della riga cancellata. Le liste, i dettagli e il feed leggono tutte le pagine, anche con un limite Data API inferiore a 1.000 righe.
 - Il calendario usa un token casuale (244 bit) per utente, leggibile solo dal proprietario; rigenerarlo invalida subito il vecchio link. Il feed è generato con la service role solo dalla Edge Function.
 - Il client può aggiornare solo colonne specifiche: non può toccare `is_admin` né `created_by`.
 - Tutto dipende dal fatto che solo l'admin possa creare account: tieni disattivate registrazione e accesso anonimo (passo 3 del setup).

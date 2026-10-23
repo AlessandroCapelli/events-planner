@@ -114,10 +114,16 @@ Deno.serve(async (req) => {
 	const notFound = () => new Response('Not found', { status: 404 });
 	if (!['GET', 'HEAD'].includes(req.method) || !/^[0-9a-f]{64}$/.test(token)) return notFound();
 
-	const { data, error } = await db.rpc('calendar_feed', { p_token: token });
-	if (error) return error.code === 'P0002' ? notFound() : new Response('Error', { status: 500 });
+	const events: FeedEvent[] = [];
+	for (; ;) {
+		const { data, error } = await db.rpc('calendar_feed', { p_token: token })
+			.order('starts_at').order('id').range(events.length, events.length + 199);
+		if (error) return error.code === 'P0002' ? notFound() : new Response('Error', { status: 500 });
+		if (!data.length) break;
+		events.push(...data);
+	}
 
-	const body = buildCalendar(data, {
+	const body = buildCalendar(events, {
 		lang: url.searchParams.get('lang') === 'en' ? 'en' : 'it',
 		timeZone: validTimeZone(url.searchParams.get('tz')),
 		appUrl: Deno.env.get('APP_URL') ?? '',
@@ -126,7 +132,7 @@ Deno.serve(async (req) => {
 		headers: {
 			'Content-Type': 'text/calendar; charset=utf-8',
 			'Content-Disposition': 'inline; filename="events-planner.ics"',
-			'Cache-Control': 'private, max-age=300',
+			'Cache-Control': 'private, no-cache, must-revalidate',
 		},
 	});
 });

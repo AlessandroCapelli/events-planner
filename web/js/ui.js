@@ -48,9 +48,7 @@ const isDirty = (el) =>
 /** Testo digitato e non ancora inviato, più focus e cursore: sopravvivono al re-render della stessa pagina. */
 function snapshot(root) {
 	const values = new Map();
-	for (const el of root.querySelectorAll(
-		"form[data-submit]:not([data-sent]) [name]",
-	))
+	for (const el of root.querySelectorAll("form[data-submit] [name]"))
 		if (isDirty(el))
 			values.set(keyOf(el), isToggle(el) ? el.checked : el.value);
 	const active = root.contains(document.activeElement)
@@ -206,21 +204,85 @@ function reportFormError(form, err) {
 	} else showFormError(form, describeError(err));
 }
 
+function submittedFields(form) {
+	return [...form.elements]
+		.filter((el) => el.name && !el.disabled)
+		.map((el) => ({
+			el,
+			value: el.value,
+			checked: el.checked,
+		}));
+}
+
+// Consolida solo i valori inviati: ciò che viene scritto durante l'attesa resta una bozza.
+function finishForm(form, fields) {
+	const reset = form.hasAttribute("data-reset-on-success");
+	for (const { el, value, checked } of fields) {
+		if (isToggle(el)) {
+			const current = el.checked;
+			const next = reset ? el.defaultChecked : checked;
+			el.defaultChecked = next;
+			el.checked = current === checked ? next : current;
+		} else {
+			const current = el.value;
+			const next = reset
+				? el.hasAttribute("data-generate-on-success")
+					? randomPassword()
+					: el.defaultValue
+				: value;
+			el.defaultValue = next;
+			el.value = current === value ? next : current;
+		}
+	}
+}
+
 /**
  * Renderizza il markup in root e collega i click su [data-action] e i submit di form[data-submit].
  * Mentre un'azione è in corso le altre vengono ignorate, così i doppi click non generano richieste concorrenti.
  * Se si ri-renderizza la stessa pagina (es. aggiornamento in tempo reale) il testo non inviato e il focus restano.
  */
+const mounts = new WeakMap();
+
+export function resetMount(root) {
+	mounts.delete(root);
+	delete root.dataset.page;
+	root.classList.remove("is-busy");
+}
+
 export function mount(root, markup, actions = {}) {
 	const page = location.hash;
+	let state = mounts.get(root);
+	if (state?.page !== page) {
+		state = { page, busy: false, pending: null };
+		mounts.set(root, state);
+	}
+	// Una richiesta non deve perdere il suo form né il blocco dei doppi clic.
+	if (state.busy) {
+		state.pending = [markup, actions];
+		return;
+	}
 	const kept = root.dataset.page === page ? snapshot(root) : null;
-	let busy = false;
 	const run = (fn) => {
-		busy = true;
+		state.busy = true;
 		root.classList.add("is-busy");
 		return guard(fn).finally(() => {
-			busy = false;
+			state.busy = false;
+			if (mounts.get(root) !== state || location.hash !== page) return;
 			root.classList.remove("is-busy");
+			const pending = state.pending;
+			state.pending = null;
+			if (pending) {
+				mount(root, ...pending);
+				if (state.formError) {
+					const form = [
+						...root.querySelectorAll("form[data-submit]"),
+					].find(
+						(el) => el.dataset.submit === state.formError.submit,
+					);
+					if (form) reportFormError(form, state.formError.error);
+				}
+			}
+			state.formError = null;
 		});
 	};
 
@@ -235,7 +297,7 @@ export function mount(root, markup, actions = {}) {
 		const el = e.target.closest("[data-action]");
 		const fn = el && actions[el.dataset.action];
 		if (!fn) return;
-		if (busy) return void e.preventDefault();
+		if (state.busy) return void e.preventDefault();
 		run(() => fn(el.dataset, el));
 	};
 	root.onsubmit = (e) => {
@@ -243,21 +305,22 @@ export function mount(root, markup, actions = {}) {
 		const fn = actions[form.dataset.submit];
 		if (!fn) return;
 		e.preventDefault();
-		if (busy) return;
+		if (state.busy) return;
 		clearErrors(form);
 		if (!validate(form)) return;
+		const fields = submittedFields(form);
 		const button = e.submitter;
 		if (button) button.disabled = true;
-		// Un form inviato non va ripristinato dal re-render che segue il salvataggio.
-		form.dataset.sent = "";
 		run(async () => {
 			try {
 				await fn(Object.fromEntries(new FormData(form)), form);
+				finishForm(form, fields);
 			} catch (err) {
+				// Applica anche le novità altrui, conservando bozza ed errore.
+				state.formError = { submit: form.dataset.submit, error: err };
 				reportFormError(form, err);
 			}
 		}).finally(() => {
-			delete form.dataset.sent;
 			if (button) button.disabled = false;
 		});
 	};
@@ -295,8 +358,10 @@ export function ask({
 	handlers = {},
 }) {
 	const dialog = document.getElementById("dialog");
+	if (dialog.open) return Promise.resolve(null);
+	dialog.setAttribute("aria-labelledby", "dialog-title");
 	dialog.innerHTML = html` <form method="dialog" class="dialog-form">
-		<h2>${title}</h2>
+		<h2 id="dialog-title">${title}</h2>
 		${message && html`<p class="muted">${message}</p>`} ${body}
 		${input &&
 		html` <div class="field">
@@ -353,13 +418,20 @@ export function ask({
 			if (e.target === dialog) return dialog.close();
 			const handler = e.target.closest("[data-handler]");
 			if (handler)
-				return handlers[handler.dataset.handler]?.(handler, dialog);
+				return guard(() =>
+					handlers[handler.dataset.handler]?.(handler, dialog),
+				);
 			if (e.target.closest("[data-generate]")) {
 				dialog.querySelector("#dialog-input").value = randomPassword();
 			}
 			const copy = e.target.closest("[data-copy]");
 			if (copy) {
-				await navigator.clipboard.writeText(copy.dataset.copy);
+				try {
+					await navigator.clipboard.writeText(copy.dataset.copy);
+				} catch (err) {
+					showFormError(form, describeError(err));
+					return;
+				}
 				const label = copy.querySelector("span");
 				const original = label.textContent;
 				label.textContent = t("common.copied");
@@ -372,7 +444,9 @@ export function ask({
 				if (dialog.returnValue !== "ok") return resolve(null);
 				resolve(
 					input
-						? dialog.querySelector("#dialog-input").value.trim()
+						? input.trim
+							? dialog.querySelector("#dialog-input").value.trim()
+							: dialog.querySelector("#dialog-input").value
 						: true,
 				);
 			},
