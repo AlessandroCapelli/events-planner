@@ -22,7 +22,7 @@ async function must<T extends { data: unknown; error: unknown }>(query: PromiseL
 
 /**
  * Admin-only user management. The POST body selects an `action`:
- * `list`, `create`, `update` or `delete`. Errors carry a `code`
+ * `list`, `create` (with at least one group), `update` or `delete`. Errors carry a `code`
  * (e.g. `email_exists`, `weak_password`) that the client translates.
  */
 Deno.serve(async (req) => {
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
 		const caller = await must(db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle());
 		if (!caller?.is_admin) return json({ error: 'Forbidden' }, 403);
 
-		const { action, id, email, password, display_name, is_admin } = await req.json();
+		const { action, id, email, password, display_name, is_admin, groups } = await req.json();
 		const self = id === user.id;
 
 		switch (action) {
@@ -71,13 +71,15 @@ Deno.serve(async (req) => {
 				);
 			}
 			case 'create': {
+				if (!Array.isArray(groups) || !groups.length || !groups.every((g) => typeof g === 'string'))
+					return json({ error: 'Choose at least one group', code: 'no_group' }, 400);
 				const { user: created } = await must(
 					db.auth.admin.createUser({
 						email,
 						password,
 						email_confirm: true,
 						user_metadata: { display_name },
-						app_metadata: { initial_admin: is_admin === true },
+						app_metadata: { initial_admin: is_admin === true, initial_groups: groups },
 					}),
 				);
 				if (!created) throw new Error('User creation returned no user');
