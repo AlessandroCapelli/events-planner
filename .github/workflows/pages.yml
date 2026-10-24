@@ -15,7 +15,13 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    checks:
+        uses: ./.github/workflows/checks.yml
+        permissions:
+            contents: read
+
     deploy:
+        needs: checks
         runs-on: ubuntu-latest
         environment:
             name: github-pages
@@ -27,7 +33,11 @@ jobs:
               env:
                   SUPABASE_URL: ${{ vars.SUPABASE_URL }}
                   SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+                  PRIVACY_CONTACT: ${{ vars.PRIVACY_CONTACT }}
               run: node scripts/generate-config.mjs
+
+            - name: Version static assets
+              run: node scripts/stamp-assets.mjs "${GITHUB_SHA::12}"
 
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3

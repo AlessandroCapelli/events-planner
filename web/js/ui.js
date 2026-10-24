@@ -420,9 +420,12 @@ export function ask({
 	});
 }
 
+/** Sprite URL, carrying the deployment version of this module (see scripts/stamp-assets.mjs). */
+const ICONS = `icons.svg${new URL(import.meta.url).search}`;
+
 /** Icon from the Lucide-style sprite in icons.svg (24×24, stroked). */
 export const icon = (name, cls = "") =>
-	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><use href="icons.svg?v=2#${name}"></use></svg>`;
+	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><use href="${ICONS}#${name}"></use></svg>`;
 
 /** Well-separated hues, so different people never get near-identical avatars. */
 const AVATAR_HUES = [0, 28, 48, 142, 172, 196, 220, 258, 290, 325];

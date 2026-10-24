@@ -1,0 +1,72 @@
+name: Database backup
+
+# Cron runs in UTC: both entries fire, and the "when" job keeps the one that is 04:00 in TIME_ZONE.
+on:
+    schedule:
+        - cron: "0 2 * * *"
+        - cron: "0 3 * * *"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: backup
+    cancel-in-progress: false
+
+env:
+    TIME_ZONE: Europe/Zurich
+
+jobs:
+    when:
+        runs-on: ubuntu-latest
+        outputs:
+            run: ${{ steps.check.outputs.run }}
+        steps:
+            - id: check
+              env:
+                  SCHEDULE: ${{ github.event.schedule }}
+              run: |
+                  hour=$(( 4 - $(TZ="$TIME_ZONE" date +%z | cut -c2-3 | sed 's/^0//') ))
+                  if [ "$GITHUB_EVENT_NAME" != schedule ] || [ "$SCHEDULE" = "0 $hour * * *" ]; then
+                      echo "run=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "run=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+    backup:
+        needs: when
+        if: needs.when.outputs.run == 'true'
+        runs-on: ubuntu-latest
+        env:
+            SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+            BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        steps:
+            - name: Check secrets
+              run: |
+                  test -n "$SUPABASE_DB_URL" || { echo "::error::Add the SUPABASE_DB_URL repository secret"; exit 1; }
+                  test -n "$BACKUP_PASSPHRASE" || { echo "::error::Add the BACKUP_PASSPHRASE repository secret"; exit 1; }
+
+            - uses: supabase/setup-cli@v1
+              with:
+                  version: latest
+
+            - name: Dump roles, schema and data
+              run: |
+                  mkdir backup
+                  supabase db dump --db-url "$SUPABASE_DB_URL" --role-only -f backup/roles.sql
+                  supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql
+                  supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f backup/data.sql
+
+            - name: Encrypt
+              run: |
+                  tar -czf - backup | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 \
+                      --output "backup-$(date -u +%Y%m%dT%H%MZ).tar.gz.gpg" 3<<<"$BACKUP_PASSPHRASE"
+                  rm -r backup
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: database-${{ github.run_id }}
+                  path: backup-*.tar.gz.gpg
+                  retention-days: 30
+                  if-no-files-found: error

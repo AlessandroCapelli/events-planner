@@ -2,6 +2,8 @@
 \ir bootstrap.sql
 \ir ../supabase/migrations/20261023000000_init.sql
 \ir ../supabase/migrations/20261030000000_groups.sql
+\ir ../supabase/migrations/20261031000000_save_event_lock.sql
+\ir ../supabase/migrations/20261101000000_polls.sql
 
 begin;
 insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
@@ -204,6 +206,25 @@ do $$ begin
   end if;
 end $$;
 
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+select set_config('test.poll', public.create_poll('10000000-0000-4000-8000-000000000001', 'Pizza or sushi?', false, array['Pizza', 'Sushi', ' Pizza '])::text, true);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000004', true);
+do $$ declare options uuid[] := array(select id from public.poll_options where poll_id = current_setting('test.poll')::uuid order by position); begin
+  if cardinality(options) <> 2 then raise exception 'Repeated poll options were kept'; end if;
+  perform public.vote_poll(current_setting('test.poll')::uuid, options[1:1]);
+  begin
+    perform public.vote_poll(current_setting('test.poll')::uuid, options);
+    raise exception 'Voted twice in a single-choice poll';
+  exception when sqlstate '22023' then null;
+  end;
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000006', true);
+do $$ begin
+  if exists (select 1 from public.polls) then raise exception 'Polls of another group are visible'; end if;
+end $$;
+reset role;
+
 set local role anon;
 do $$ begin
   if has_function_privilege(current_user, 'public.is_member(uuid)', 'execute')
@@ -218,4 +239,4 @@ do $$ begin
 end $$;
 reset role;
 rollback;
-\echo 'PASS: migrations, item and invitation RLS, groups, proposal adoption, atomic user/admin creation, feed and anon privileges.'
+\echo 'PASS: migrations, item and invitation RLS, groups, polls, proposal adoption, atomic user/admin creation, feed and anon privileges.'

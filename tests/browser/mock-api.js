@@ -22,6 +22,7 @@ const state = (window.__mock = {
 		invite_only: false,
 		invitations: [],
 		proposals: [],
+		polls: [],
 		items: [],
 		responses: Array.from({ length: 5 }, (_, i) => ({
 			user_id: "user" + i,
@@ -46,6 +47,7 @@ const hold = (name) =>
 	});
 
 export const configured = true;
+export const privacyContact = "";
 export function onUserChange(callback) {
 	state.authChange = callback;
 	queueMicrotask(() => callback({ id: "me", email: "mario@example.test" }));
@@ -125,3 +127,22 @@ export const adoptProposal = async () => {};
 export const deleteProposal = async () => {};
 export const claimItem = async () => ["item"];
 export const deleteItem = async () => {};
+export async function createPoll(_id, question, multiple, labels) {
+	state.event.polls.push({
+		id: "poll",
+		question,
+		multiple,
+		created_by: "me",
+		created_at: new Date().toISOString(),
+		author: { display_name: "Mario" },
+		options: labels.map((label, i) => ({ id: `option${i}`, label, votes: [] })),
+	});
+}
+export async function votePoll(pollId, optionIds) {
+	const poll = state.event.polls.find((p) => p.id === pollId);
+	for (const option of poll.options) {
+		option.votes = option.votes.filter((v) => v.user_id !== "me");
+		if (optionIds.includes(option.id)) option.votes.push({ user_id: "me", profile: { display_name: "Mario" } });
+	}
+}
+export const deletePoll = async () => {};

@@ -11,10 +11,13 @@
 		"test:db": "psql -v ON_ERROR_STOP=1 -f tests/database.sql",
 		"lint": "prettier --check web tests scripts supabase/functions playwright.config.cjs",
 		"format": "prettier --write web tests scripts supabase/functions playwright.config.cjs",
-		"config": "node scripts/generate-config.mjs"
+		"config": "node scripts/generate-config.mjs",
+		"vendor": "node scripts/vendor.mjs"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.56.1",
+		"@supabase/supabase-js": "2.45.4",
+		"esbuild": "0.25.10",
 		"prettier": "3.5.3"
 	}
 }

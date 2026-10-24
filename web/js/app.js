@@ -110,6 +110,9 @@ const routes = [
 			["items", `event_id=eq.${id}`],
 			["invitations", `event_id=eq.${id}`],
 			["votes"],
+			["polls", `event_id=eq.${id}`],
+			["poll_options"],
+			["poll_votes"],
 			["profiles"],
 			["groups"],
 			["memberships"],
@@ -117,6 +120,7 @@ const routes = [
 	},
 	{ path: new RegExp(`^/event/${UUID}/edit$`), view: viewEventForm, title: "form.editTitle" },
 	{ path: /^\/account$/, view: viewAccount, title: "account.title" },
+	{ path: /^\/privacy$/, view: viewPrivacy, title: "privacy.title", public: true },
 	{ path: /^\/admin$/, view: viewAdmin, title: "admin.title", live: () => [["profiles"], ["groups"], ["memberships"]] },
 ];
 
@@ -231,19 +235,19 @@ async function render() {
 	draftGroup = null;
 	if (!api.configured) return void mount(app, errorState(t("common.missingConfig")));
 	renderNav();
-	if (!me) return show(viewLogin);
-
 	const path = location.hash.slice(1) || "/";
 	const route = routes.find((r) => r.path.test(path));
+	if (!me && !route?.public) return show(viewLogin);
 	if (!route) return void (location.hash = "#/");
 	if (route.title) document.title = `${t(route.title)} · Events Planner`;
 	const args = path.match(route.path).slice(1);
 
 	app.innerHTML = skeleton();
 	window.scrollTo(0, 0);
-	goLive(route.live ? route.live(...args) : [["profiles", `id=eq.${me.id}`], ["groups"], ["memberships"]], () =>
-		show(route.view, args, { quiet: true }),
-	);
+	if (me)
+		goLive(route.live ? route.live(...args) : [["profiles", `id=eq.${me.id}`], ["groups"], ["memberships"]], () =>
+			show(route.view, args, { quiet: true }),
+		);
 	await show(route.view, args);
 }
 
@@ -264,8 +268,9 @@ function renderNav() {
 								<div class="muted small truncate">${me.email}</div>
 							</div>
 						</div>
-						<a class="menu-item" href="#/account">${icon("user")}${t("nav.account")}</a>
 						${me.is_admin && html`<a class="menu-item" href="#/admin">${icon("shield")}${t("nav.admin")}</a>`}
+						<a class="menu-item" href="#/account">${icon("user")}${t("nav.account")}</a>
+						<a class="menu-item" href="#/privacy">${icon("lock")}${t("privacy.title")}</a>
 						<button class="menu-item" data-action="lang">${icon("globe")}${t("nav.switchLang")}</button>
 						<button class="menu-item danger" data-action="logout">${icon("logout")}${t("nav.logout")}</button>
 					</div>
@@ -568,6 +573,7 @@ function viewLogin() {
 				</label>
 				<button class="btn btn-primary btn-block">${t("login.submit")}</button>
 				<p class="muted small center">${t("login.hint")}</p>
+				<p class="small center"><a href="#/privacy">${t("privacy.title")}</a></p>
 			</form>
 		</div>`,
 		{
@@ -806,6 +812,43 @@ async function viewEvent(id) {
 		</li>`;
 	};
 
+	const polls = [...event.polls].sort((a, b) => a.created_at.localeCompare(b.created_at));
+	const pollRow = (poll) => {
+		const voters = new Set(poll.options.flatMap((o) => o.votes.map((v) => v.user_id)));
+		return html`<li class="poll">
+			<div class="poll-head">
+				<div class="grow">
+					<strong>${poll.question}</strong>
+					<div class="muted small">
+						${t(poll.multiple ? "polls.multipleHint" : "polls.singleHint")} · ${tn("polls.voters", voters.size)} ·
+						${t("proposals.by", { name: poll.author?.display_name ?? "—" })}
+					</div>
+				</div>
+				${!closed && (canEdit || poll.created_by === me.id) && deleteButton("deletePoll", poll.id)}
+			</div>
+			<div class="poll-options" role="group" aria-label="${poll.question}">
+				${poll.options.map((o) => {
+					const chosen = o.votes.some((v) => v.user_id === me.id);
+					const share = voters.size ? Math.round((o.votes.length / voters.size) * 100) : 0;
+					return html`<button
+						class="poll-option"
+						data-action="votePoll"
+						data-id="${poll.id}"
+						data-value="${o.id}"
+						aria-pressed="${String(chosen)}"
+						style="--share: ${share}%"
+						${closed && "disabled"}
+					>
+						<span class="poll-mark">${chosen && icon("check")}</span>
+						<span class="grow truncate">${o.label}</span>
+						${o.votes.length > 0 && avatarStack([...o.votes].sort(byName), 3)}
+						<span class="poll-count">${o.votes.length}</span>
+					</button>`;
+				})}
+			</div>
+		</li>`;
+	};
+
 	const itemRow = (item) =>
 		html`<li class="row">
 			${item.claimer
@@ -945,6 +988,32 @@ async function viewEvent(id) {
 							<button class="btn">${icon("plus")}${t("proposals.add")}</button>
 						</form>`}
 					</section>`}
+					${(!closed || polls.length > 0) &&
+					html`<section class="card panel polls-card">
+						${cardHead("listChecks", t("polls.title"), !closed && t("polls.subtitle"))}
+						${polls.length > 0 &&
+						html`<ul class="polls">
+							${polls.map(pollRow)}
+						</ul>`}
+						${!closed &&
+						html`<form class="poll-form" data-submit="createPoll" data-reset-on-success>
+							<label class="field">
+								<span>${t("polls.question")}</span>
+								<input name="question" required maxlength="200" placeholder="${t("polls.questionPlaceholder")}" />
+							</label>
+							<label class="field">
+								<span>${t("polls.options")}</span>
+								<textarea name="options" rows="3" required placeholder="${t("polls.optionsPlaceholder")}"></textarea>
+							</label>
+							<div class="poll-form-foot">
+								<label class="check">
+									<input name="multiple" type="checkbox" />
+									<span>${t("polls.multiple")}</span>
+								</label>
+								<button class="btn">${icon("plus")}${t("polls.add")}</button>
+							</div>
+						</form>`}
+					</section>`}
 					${(!closed || items.length > 0) &&
 					html`<section class="card panel items-card">
 						${cardHead("package", t("items.title"), !closed && t("items.subtitle"))}
@@ -1074,6 +1143,32 @@ async function viewEvent(id) {
 				await reload();
 			},
 			deleteProposal: andReload(({ id: pid }) => api.deleteProposal(pid)),
+			createPoll: andReload(async ({ question, options, multiple }) => {
+				const labels = [...new Set(options.split("\n").map((line) => line.trim()))].filter(Boolean);
+				if (labels.length < 2 || labels.length > 10) throw new FieldError("options", t("polls.optionsCount"));
+				if (labels.some((label) => label.length > 100))
+					throw new FieldError("options", t("validation.tooLong", { n: 100 }));
+				await api.createPoll(id, question.trim(), multiple === "on", labels);
+			}),
+			votePoll: andReload(({ id: pollId, value: optionId }) => {
+				const poll = event.polls.find((p) => p.id === pollId);
+				const mine = poll.options.filter((o) => o.votes.some((v) => v.user_id === me.id)).map((o) => o.id);
+				const chosen = mine.includes(optionId);
+				const next = poll.multiple
+					? chosen
+						? mine.filter((o) => o !== optionId)
+						: [...mine, optionId]
+					: chosen
+						? []
+						: [optionId];
+				return api.votePoll(pollId, next);
+			}),
+			deletePoll: async ({ id: pollId }) => {
+				const confirm = { confirm: t("common.delete"), danger: true };
+				if (!(await confirmed(current, { title: t("polls.confirmDelete"), ...confirm }))) return;
+				await api.deletePoll(pollId);
+				await reload();
+			},
 			addItem: andReload(({ label }) => api.addItem(id, label.trim())),
 			claim: andReload(async ({ id: itemId }) => {
 				if (!(await api.claimItem(itemId, me.id)).length) notify(t("items.taken"), true);
@@ -1415,7 +1510,7 @@ async function viewAdmin() {
 						${icon("users")}${t("admin.users")}<span class="section-count">${users.length}</span>
 					</h2>
 
-					<details class="card disclosure" ${users.length <= 1 && "open"}>
+					<details class="card disclosure">
 						<summary>${icon("userPlus")}<span>${t("admin.create")}</span>${icon("chevronDown", "chev")}</summary>
 						<form class="disclosure-body" data-submit="create" data-reset-on-success autocomplete="off">
 							<div class="field-grid">
@@ -1671,6 +1766,42 @@ async function viewAdmin() {
 				await reload();
 			},
 		},
+	];
+}
+
+/** Sections of the privacy notice, in order; each has a `.title` and a `.body` translation. */
+const PRIVACY_SECTIONS = [
+	"controller",
+	"data",
+	"purposes",
+	"access",
+	"providers",
+	"retention",
+	"storage",
+	"rights",
+	"changes",
+];
+
+/** Privacy notice, readable without signing in. The controller comes from `privacyContact` in config.js. */
+function viewPrivacy() {
+	const contact = api.privacyContact || t("privacy.contactFallback");
+	return [
+		html`<div class="page-narrow">
+			${backLink("#/", t(me ? "event.back" : "login.submit"))}
+			${pageHead("lock", t("privacy.title"), t("privacy.updated"))}
+			<article class="card panel privacy">
+				<p>${t("privacy.intro")}</p>
+				${PRIVACY_SECTIONS.map(
+					(key) =>
+						html`<section>
+							<h2 class="card-title">${t(`privacy.${key}.title`)}</h2>
+							${t(`privacy.${key}.body`, { contact })
+								.split("\n")
+								.map((text) => html`<p>${text}</p>`)}
+						</section>`,
+				)}
+			</article>
+		</div>`,
 	];
 }
 

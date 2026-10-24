@@ -1,6 +1,8 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
+import { createClient } from "../vendor/supabase.js";
 
-const { supabaseUrl, supabaseAnonKey } = window.CONFIG ?? {};
+const { supabaseUrl, supabaseAnonKey, privacyContact: contact } = window.CONFIG ?? {};
+/** Data controller named in the privacy notice, if configured. */
+export const privacyContact = contact ?? "";
 /** Whether `config.js` provides the Supabase project URL and publishable key. */
 export const configured = Boolean(supabaseUrl && supabaseAnonKey);
 const sb = configured ? createClient(supabaseUrl, supabaseAnonKey) : null;
@@ -137,26 +139,37 @@ export const listPast = (since, limit, groupId = null) =>
 export async function getEvent(id) {
 	const event = await sb.from("events").select(EVENT_DETAIL).eq("id", id).maybeSingle().then(unwrap);
 	if (!event) return null;
-	const [responses, proposals, items, invitations] = await Promise.all([
+	const [responses, proposals, items, invitations, polls] = await Promise.all([
 		relatedRows("responses", "id, user_id, status, guests, profile:profiles(display_name)", "event_id", [id]),
 		relatedRows("proposals", "*, author:profiles!proposals_created_by_fkey(display_name)", "event_id", [id]),
 		relatedRows("items", "*, claimer:profiles!items_claimed_by_fkey(display_name)", "event_id", [id]),
 		relatedRows("invitations", "id, user_id", "event_id", [id]),
+		relatedRows("polls", "*, author:profiles!polls_created_by_fkey(display_name)", "event_id", [id]),
 	]);
-	const votes = await relatedRows(
-		"votes",
-		"id, proposal_id, user_id, value",
-		"proposal_id",
-		proposals.map((p) => p.id),
-	);
-	const byProposal = new Map(proposals.map((p) => [p.id, []]));
-	for (const vote of votes) byProposal.get(vote.proposal_id)?.push(vote);
+	const pollIds = polls.map((p) => p.id);
+	const [votes, options, pollVotes] = await Promise.all([
+		relatedRows(
+			"votes",
+			"id, proposal_id, user_id, value",
+			"proposal_id",
+			proposals.map((p) => p.id),
+		),
+		relatedRows("poll_options", "id, poll_id, label, position", "poll_id", pollIds),
+		relatedRows("poll_votes", "id, poll_id, option_id, user_id, profile:profiles(display_name)", "poll_id", pollIds),
+	]);
 	return {
 		...event,
 		responses,
 		items,
 		invitations,
-		proposals: proposals.map((p) => ({ ...p, votes: byProposal.get(p.id) })),
+		proposals: proposals.map((p) => ({ ...p, votes: votes.filter((v) => v.proposal_id === p.id) })),
+		polls: polls.map((poll) => ({
+			...poll,
+			options: options
+				.filter((o) => o.poll_id === poll.id)
+				.sort((a, b) => a.position - b.position)
+				.map((o) => ({ ...o, votes: pollVotes.filter((v) => v.option_id === o.id) })),
+		})),
 	};
 }
 
@@ -186,6 +199,16 @@ export const addProposal = (event_id, data) =>
 		.then(unwrap);
 export const deleteProposal = (id) => changed(sb.from("proposals").delete().eq("id", id));
 export const adoptProposal = (pid) => sb.rpc("adopt_proposal", { pid }).then(unwrap);
+
+/** Creates a poll on an event with 2 to 10 options; resolves to its id. */
+export const createPoll = (event_id, question, multiple, options) =>
+	sb
+		.rpc("create_poll", { p_event: event_id, p_question: question, p_multiple: multiple, p_options: options })
+		.then(unwrap);
+/** Replaces the user's choices in a poll; an empty list removes them. */
+export const votePoll = (pollId, optionIds) =>
+	sb.rpc("vote_poll", { p_poll: pollId, p_options: optionIds }).then(unwrap);
+export const deletePoll = (id) => changed(sb.from("polls").delete().eq("id", id));
 
 /** Sets the vote of `user_id` on a proposal: 1, -1, or 0 to remove it. */
 export const vote = (proposal_id, user_id, value) =>

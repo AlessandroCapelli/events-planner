@@ -224,3 +224,26 @@ test("the group filter narrows the list and is remembered", async ({ page }) => 
 	await page.getByRole("button", { name: "All", exact: true }).click();
 	await expect(page.locator(".event-card")).toHaveCount(1);
 });
+
+test("polls are validated, created and voted on", async ({ page }) => {
+	await page.goto(eventPath);
+	const form = page.locator('form[data-submit="createPoll"]');
+	const create = form.getByRole("button", { name: "Create poll", exact: true });
+	await form.locator('[name="question"]').fill("Pizza or sushi?");
+	await form.locator('[name="options"]').fill("Pizza\n Pizza \n");
+	await create.click();
+	await expect(form.locator(".field-error")).toContainText("2 to 10");
+	await form.locator('[name="options"]').fill("Pizza\nSushi");
+	await create.click();
+	await expect(form.locator('[name="question"]')).toHaveValue("");
+	const pizza = page.locator(".poll-option").filter({ hasText: "Pizza" });
+	const sushi = page.locator(".poll-option").filter({ hasText: "Sushi" });
+	await sushi.click();
+	await expect(sushi).toHaveAttribute("aria-pressed", "true");
+	await expect(sushi.locator(".poll-count")).toHaveText("1");
+	await pizza.click();
+	await expect(pizza).toHaveAttribute("aria-pressed", "true");
+	await expect(sushi).toHaveAttribute("aria-pressed", "false");
+	await pizza.click();
+	await expect(pizza).toHaveAttribute("aria-pressed", "false");
+});

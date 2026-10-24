@@ -20,11 +20,13 @@ Static vanilla HTML/CSS/JS on GitHub Pages, no build step. [Supabase](https://su
 - **Groups**: every user belongs to one or more groups and every event to one group, which only its members can see. The list shows a group filter when you are in more than one.
 - **Audience**: an event is for its whole group or only for the members its organizer invites; nobody else can see it.
 - **Proposals**: suggest another date or place and vote on it. The organizer or an admin can adopt a proposal, which updates the event and clears the responses.
+- **Polls**: ask the group a question with 2 to 10 options, single or multiple choice, and see who voted for what.
 - **Things to bring**: a shared list where everyone claims what they'll bring.
 - **Archive**: 12 hours after it starts an event becomes read-only and moves to the _Past_ section.
 - **Real time**: changes from others show up instantly, without losing what you are typing.
 - **Sharing**: WhatsApp, Telegram, email, the system share sheet or a link to copy.
 - **Calendar**: download a single event as `.ics`, or subscribe to a personal feed with every event you can see (Google, Apple, Outlook).
+- **Privacy notice**: a GDPR notice readable without signing in, naming the data controller you configure.
 - **Admin**: create, rename and delete groups (a group's events are deleted with it), choose each user's groups, create and delete users, reset passwords, grant the admin role. As participants, admins see only the events of their own groups.
 
 ## Structure
@@ -37,11 +39,12 @@ web/                          static site (GitHub Pages)
   js/ui.js                    escaped html templates, forms, dialogs
   locales/                    translations (it, en)
   icons.svg                   icon sprite
+  vendor/supabase.js          bundled Supabase client
 supabase/
   migrations/                 schema, RLS and functions
   functions/admin-users/      user management (admins only)
   functions/calendar/         personal iCalendar feed
-scripts/generate-config.mjs   writes web/config.js from the repository variables
+scripts/                      deployment config, asset versioning, Supabase client bundle
 tests/                        unit, browser (Playwright) and database tests
 ```
 
@@ -72,10 +75,27 @@ tests/                        unit, browser (Playwright) and database tests
 
 ### GitHub Pages
 
-1. In **Settings → Secrets and variables → Actions → Variables** (not _Secrets_), add `SUPABASE_URL` (`https://<ref>.supabase.co`) and `SUPABASE_ANON_KEY` (the `sb_publishable_…` key, public by design).
+1. In **Settings → Secrets and variables → Actions → Variables** (not _Secrets_), add `SUPABASE_URL` (`https://<ref>.supabase.co`), `SUPABASE_ANON_KEY` (the `sb_publishable_…` key, public by design) and `PRIVACY_CONTACT`, the data controller shown in the privacy notice (e.g. `Name Surname, privacy@example.com`).
 2. In **Settings → Pages**, set the source to _GitHub Actions_.
-3. Push to `main`: the workflow generates `config.js` and publishes `web/`.
+3. Push to `main`: the workflow runs every check, then generates `config.js`, adds the commit to every asset URL (`scripts/stamp-assets.mjs`), so browsers never mix two versions, and publishes `web/`. A failing check stops the deployment.
 4. In Supabase, set **Authentication → URL Configuration → Site URL** to the Pages URL.
+
+### Backups
+
+`.github/workflows/backup.yml` dumps roles, schema and data (including the `auth` users) every night at 04:00 Italian time (`TIME_ZONE` in the workflow, daylight saving time included) with the Supabase CLI, encrypts the dump with GPG and keeps it as a workflow artifact for 30 days. It needs two repository **secrets**:
+
+- `SUPABASE_DB_URL`: the _Session pooler_ connection string from **Connect** in the Supabase dashboard, with the database password;
+- `BACKUP_PASSPHRASE`: a long random passphrase. Keep a copy outside GitHub: without it the backups can't be opened.
+
+To restore, download the artifact and run:
+
+```sh
+gpg --decrypt backup-<date>.tar.gz.gpg | tar -xz
+psql "$DATABASE_URL" -f backup/roles.sql -f backup/schema.sql \
+  -c 'SET session_replication_role = replica' -f backup/data.sql
+```
+
+GitHub pauses scheduled workflows after 60 days without commits; re-enable it from the **Actions** tab if that happens.
 
 ### Local development
 
@@ -93,6 +113,8 @@ npm run lint          # formatting check (npm run format fixes it)
 ```
 
 Browser checks run headlessly against an in-memory API, without touching Supabase. They cover every page in Italian and English at mobile, tablet and desktop widths and save screenshots under `test-results/`. Set `PLAYWRIGHT_PORT` to use another local port, or `PLAYWRIGHT_CHANNEL=msedge` to use an installed Microsoft Edge.
+
+The Supabase client is bundled in `web/vendor/supabase.js`, so the app loads nothing from third-party CDNs. To update it, change the `@supabase/supabase-js` version in `package.json`, then run `npm install` and `npm run vendor`.
 
 ## Calendar sync
 

@@ -930,8 +930,12 @@ button {
 	order: 4;
 }
 
-.items-card {
+.polls-card {
 	order: 5;
+}
+
+.items-card {
+	order: 6;
 }
 
 @media (min-width: 900px) {
@@ -1608,16 +1612,15 @@ fieldset:has(.field-error) .invitee-list {
 	padding: var(--sp-3) var(--sp-4);
 }
 
-.page-admin {
-	max-width: none;
-}
-
 .admin-layout,
 .admin-users {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	align-items: start;
 	gap: var(--sp-4);
+}
+
+.admin-layout {
+	gap: var(--sp-6);
 }
 
 .admin-users .section-title {
@@ -1634,17 +1637,6 @@ fieldset:has(.field-error) .invitee-list {
 
 .admin-groups .row strong {
 	overflow-wrap: anywhere;
-}
-
-.admin-groups .add-form {
-	grid-template-columns: minmax(0, 1fr);
-}
-
-@media (min-width: 1000px) {
-	.admin-layout {
-		grid-template-columns: minmax(0, 1fr) 340px;
-		gap: var(--sp-6);
-	}
 }
 
 /* Switch on the left, icons on the right, even when the row wraps */
@@ -1807,6 +1799,120 @@ dialog::backdrop {
 
 .dialog-form > .btn {
 	align-self: flex-start;
+}
+
+/* ── Polls ─────────────────────────────────────────────────────────────── */
+
+.polls {
+	display: grid;
+	gap: var(--sp-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.poll {
+	display: grid;
+	gap: var(--sp-3);
+	padding: var(--sp-4);
+	border-radius: var(--r-md);
+	background: var(--surface-2);
+}
+
+.poll-head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--sp-3);
+}
+
+.poll-options {
+	display: grid;
+	gap: var(--sp-2);
+}
+
+/* The bar behind each option shows its share of the voters */
+.poll-option {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-3);
+	min-height: var(--control);
+	padding: var(--sp-2) var(--sp-3);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--r-md);
+	background: linear-gradient(90deg, var(--accent-soft) var(--share), transparent var(--share)) var(--bg);
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 0.15s;
+}
+
+.poll-option:hover:not(:disabled) {
+	border-color: var(--accent);
+}
+
+.poll-option:disabled {
+	cursor: default;
+}
+
+.poll-option[aria-pressed="true"] {
+	border-color: var(--accent);
+}
+
+.poll-mark {
+	display: grid;
+	flex: none;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--r-full);
+	color: var(--accent-text);
+}
+
+.poll-option[aria-pressed="true"] .poll-mark {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
+.poll-mark .icon {
+	width: 14px;
+	height: 14px;
+	stroke-width: 3;
+}
+
+.poll-count {
+	min-width: 2ch;
+	color: var(--text-2);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.poll-form {
+	display: grid;
+	gap: var(--sp-3);
+	padding-top: var(--sp-4);
+	border-top: 1px solid var(--border);
+}
+
+.poll-form-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--sp-3);
+}
+
+/* ── Privacy notice ────────────────────────────────────────────────────── */
+
+.privacy section {
+	display: grid;
+	gap: var(--sp-2);
+}
+
+.privacy p {
+	color: var(--text-2);
+	line-height: 1.6;
 }
 
 /* ── Groups ────────────────────────────────────────────────────────────── */
