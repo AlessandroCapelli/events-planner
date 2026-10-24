@@ -13,7 +13,9 @@ const dict = {
 		"login.hint":
 			"Non hai un account? Chiedilo all'amministratore del gruppo.",
 		"login.invalid": "Email o password non corretti.",
-		"events.title": "Prossimi eventi",
+		"events.title": "Eventi",
+		"events.upcomingTitle": "In programma",
+		"events.pastTitle": "Conclusi",
 		"events.subtitle": "Tutto quello che il gruppo ha in programma.",
 		"events.count.one": "{n} evento in programma",
 		"events.count.other": "{n} eventi in programma",
@@ -90,6 +92,7 @@ const dict = {
 			"Gli eventi nuovi si aggiungono e quelli con risposta «Non ci sono» vengono rimossi. Outlook e Google decidono quando aggiornare il calendario: possono servire più di 24 ore.",
 		"calendar.enable": "Attiva calendario",
 		"calendar.apple": "Apple Calendar",
+		"calendar.outlook": "Outlook",
 		"calendar.outlookTitle": "Aggiungi a Outlook",
 		"calendar.outlookHint":
 			"In Outlook sul web o nel nuovo Outlook: Calendario → Aggiungi calendario → Abbonati dal Web. Incolla questo link HTTPS e conferma. Per il file .ics scaricato scegli invece Carica da file.",
@@ -241,7 +244,9 @@ const dict = {
 		"login.submit": "Sign in",
 		"login.hint": "No account yet? Ask the group administrator.",
 		"login.invalid": "Wrong email or password.",
-		"events.title": "Upcoming events",
+		"events.title": "Events",
+		"events.upcomingTitle": "Upcoming",
+		"events.pastTitle": "Past",
 		"events.subtitle": "Everything the group has planned.",
 		"events.count.one": "{n} upcoming event",
 		"events.count.other": "{n} upcoming events",
@@ -317,6 +322,7 @@ const dict = {
 			"New events are added and events you decline are removed. Outlook and Google control when the calendar refreshes: updates can take more than 24 hours.",
 		"calendar.enable": "Turn on calendar",
 		"calendar.apple": "Apple Calendar",
+		"calendar.outlook": "Outlook",
 		"calendar.outlookTitle": "Add to Outlook",
 		"calendar.outlookHint":
 			"In Outlook on the web or new Outlook: Calendar → Add calendar → Subscribe from web. Paste this HTTPS link and confirm. For a downloaded .ics file, choose Upload from file instead.",

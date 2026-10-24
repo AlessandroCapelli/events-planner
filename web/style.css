@@ -85,6 +85,8 @@
 html {
 	-webkit-text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
+	/* Spazio della barra di scorrimento sempre riservato: il layout non salta tra pagine lunghe e corte */
+	scrollbar-gutter: stable;
 }
 
 body {
@@ -635,8 +637,8 @@ button {
 	width: 32px;
 	height: 32px;
 	border-radius: 50%;
-	background: hsl(var(--hue, 230) 35% 24%);
-	color: hsl(var(--hue, 230) 75% 82%);
+	background: hsl(var(--hue, 230) 50% 26%);
+	color: hsl(var(--hue, 230) 85% 84%);
 	font-size: var(--fs-xs);
 	font-weight: 700;
 	letter-spacing: 0.02em;
@@ -726,8 +728,46 @@ button {
 
 /* ── Lista eventi ──────────────────────────────────────────────────────── */
 
-.day-group+.day-group {
+/* Due sezioni distinte: "In programma" e "Conclusi", ognuna con i suoi gruppi per giorno o mese */
+.events-section+.events-section {
 	margin-top: var(--sp-8);
+}
+
+.section-title {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-2);
+	margin-bottom: var(--sp-4);
+	padding-bottom: var(--sp-3);
+	border-bottom: 1px solid var(--border);
+	font-size: var(--fs-lg);
+}
+
+.section-title .icon {
+	width: 20px;
+	height: 20px;
+	color: var(--accent-text);
+}
+
+.past-section .section-title .icon {
+	color: var(--muted);
+}
+
+.section-count {
+	display: inline-grid;
+	place-items: center;
+	min-width: 24px;
+	height: 24px;
+	padding: 0 var(--sp-2);
+	border-radius: var(--r-full);
+	background: var(--surface-3);
+	color: var(--text-2);
+	font-size: var(--fs-xs);
+	font-weight: 650;
+}
+
+.day-group+.day-group {
+	margin-top: var(--sp-6);
 }
 
 .group-label {
@@ -1966,7 +2006,7 @@ fieldset.field>legend {
 
 .calendar-apps {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: var(--sp-2);
 }
 
@@ -2155,8 +2195,14 @@ fieldset.field>legend {
 		font-size: var(--fs-xl);
 	}
 
-	.hero-actions .btn {
-		flex: 1 1 auto;
+	/* Azioni dell'evento in griglia 2×N: se sono dispari l'ultima occupa tutta la riga */
+	.hero-actions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.hero-actions> :last-child:nth-child(odd) {
+		grid-column: 1 / -1;
 	}
 
 	/* Le azioni vanno a capo sotto il contenuto della riga */

@@ -17,6 +17,7 @@ import {
 import {
 	ask,
 	avatar,
+	describeError,
 	downloadFile,
 	FieldError,
 	fromInput,
@@ -101,7 +102,7 @@ async function show(view, args = [], { quiet = false } = {}) {
 		result = await view(...args);
 	} catch (err) {
 		if (quiet) return;
-		result = [errorState(err.message)];
+		result = [errorState(describeError(err))];
 	}
 	if (current === seq && inPage() && result) {
 		mount(app, ...result);
@@ -169,7 +170,10 @@ function goLive(bindings, refresh) {
 	};
 }
 
-// Rivalida i permessi entro 30s e aggiorna esattamente inizio/fine e mezzanotte.
+/** Ricarica di sicurezza: le modifiche arrivano già in tempo reale, questa recupera solo quelle perse. */
+const SAFETY_REFRESH = 5 * 60e3;
+
+// Prossimo risveglio: entro SAFETY_REFRESH, oppure prima se un evento inizia, si conclude o scocca la mezzanotte.
 function nextRefreshDelay() {
 	const now = Date.now();
 	const date = new Date(now);
@@ -188,7 +192,7 @@ function nextRefreshDelay() {
 	return Math.max(
 		25,
 		Math.min(
-			30e3,
+			SAFETY_REFRESH,
 			...boundaries
 				.filter((time) => time > now)
 				.map((time) => time - now + 25),
@@ -646,14 +650,31 @@ async function viewEvents() {
 	]);
 	const hasMore = past.length > pastLimit;
 
-	// Gruppi consecutivi per intestazione: se l'ultimo futuro e il primo concluso cadono nello
-	// stesso mese finiscono nello stesso gruppo (le card concluse si distinguono dallo stile).
-	const groups = [];
-	for (const event of [...upcoming, ...past.slice(0, pastLimit)]) {
-		const label = groupLabel(event.starts_at);
-		if (groups.at(-1)?.label !== label) groups.push({ label, events: [] });
-		groups.at(-1).events.push(event);
-	}
+	// Dentro ogni sezione gli eventi sono raggruppati per giorno o mese.
+	const groupsOf = (events) => {
+		const groups = [];
+		for (const event of events) {
+			const label = groupLabel(event.starts_at);
+			if (groups.at(-1)?.label !== label)
+				groups.push({ label, events: [] });
+			groups.at(-1).events.push(event);
+		}
+		return groups.map(
+			(g) =>
+				html`<section class="day-group">
+					<h3 class="group-label">${g.label}</h3>
+					<ul class="event-list">
+						${g.events.map(eventCard)}
+					</ul>
+				</section>`,
+		);
+	};
+	const sectionTitle = (name, label, count) =>
+		html`<h2 class="section-title">
+			${icon(name)}<span>${label}</span>
+			<span class="section-count">${count}</span>
+		</h2>`;
+	const shownPast = past.slice(0, pastLimit);
 
 	return [
 		html`<div class="page-narrow">
@@ -669,25 +690,31 @@ async function viewEvents() {
 					>${icon("plus")}<span>${t("events.new")}</span></a
 				>`,
 			)}
-			<div>
-				${!upcoming.length &&
-				emptyState(
+			<section class="events-section">
+				${sectionTitle(
 					"calendar",
-					t("events.emptyTitle"),
-					t("events.empty"),
-					html`<a class="btn btn-primary" href="#/new"
-						>${icon("plus")}${t("events.new")}</a
-					>`,
+					t("events.upcomingTitle"),
+					upcoming.length,
 				)}
-				${groups.map(
-					(g) =>
-						html`<section class="day-group">
-							<h2 class="group-label">${g.label}</h2>
-							<ul class="event-list">
-								${g.events.map(eventCard)}
-							</ul>
-						</section>`,
+				${upcoming.length
+					? groupsOf(upcoming)
+					: emptyState(
+							"calendar",
+							t("events.emptyTitle"),
+							t("events.empty"),
+							html`<a class="btn btn-primary" href="#/new"
+								>${icon("plus")}${t("events.new")}</a
+							>`,
+						)}
+			</section>
+			${shownPast.length > 0 &&
+			html`<section class="events-section past-section">
+				${sectionTitle(
+					"archive",
+					t("events.pastTitle"),
+					hasMore ? `${shownPast.length}+` : shownPast.length,
 				)}
+				${groupsOf(shownPast)}
 				${hasMore &&
 				html`<button
 					class="btn btn-ghost btn-block events-more"
@@ -695,7 +722,7 @@ async function viewEvents() {
 				>
 					${t("events.more")}
 				</button>`}
-			</div>
+			</section>`}
 		</div>`,
 		{
 			more: () => {
@@ -1317,13 +1344,13 @@ async function viewEvent(id) {
 				await reload();
 			},
 			vote: async ({ id: pid, value }) => {
-				const current = event.proposals
+				const previous = event.proposals
 					.find((p) => p.id === pid)
 					.votes.find((v) => v.user_id === me.id)?.value;
 				await api.vote(
 					pid,
 					me.id,
-					current === Number(value) ? 0 : Number(value),
+					previous === Number(value) ? 0 : Number(value),
 				);
 				await reload();
 			},
@@ -1356,7 +1383,8 @@ async function viewEvent(id) {
 				await reload();
 			},
 			unclaim: async ({ id: itemId }) => {
-				await api.claimItem(itemId, null);
+				const updated = await api.claimItem(itemId, null);
+				if (!updated.length) throw new Error(t("error.forbidden"));
 				await reload();
 			},
 			deleteItem: async ({ id: itemId }) => {
@@ -1576,7 +1604,7 @@ async function viewAccount() {
 							>${icon("calendarCheck")}${t("calendar.apple")}</a
 						>
 						<button class="btn" data-action="outlookCalendar">
-							${icon("calendarCheck")}Outlook
+							${icon("calendarCheck")}${t("calendar.outlook")}
 						</button>
 						<a
 							class="btn"
@@ -2029,7 +2057,7 @@ if (api.configured) {
 				if (version !== authVersion) return;
 				stopLive();
 				renderNav();
-				return void mount(app, errorState(err.message));
+				return void mount(app, errorState(describeError(err)));
 			}
 		}
 		render();

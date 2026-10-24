@@ -9,6 +9,20 @@ const unwrap = ({ data, error }) => {
 	return data;
 };
 
+// Una DELETE bloccata dalla RLS non dà errore: tocca 0 righe. La si trasforma in errore,
+// altrimenti l'app confermerebbe un'operazione mai avvenuta (es. evento appena concluso).
+const changed = (query) =>
+	query
+		.select("id")
+		.then(unwrap)
+		.then((rows) => {
+			if (!rows.length)
+				throw Object.assign(new Error("not_allowed"), {
+					code: "42501",
+				});
+			return rows;
+		});
+
 // Non assumere che il limite Data API sia 1.000: può essere più basso.
 // Si avanza delle righe effettive e si termina solo con una pagina vuota.
 async function allRows(query, limit = Infinity) {
@@ -175,7 +189,7 @@ export const saveEvent = (id, event, invitees) =>
 		})
 		.then(unwrap);
 export const deleteEvent = (id) =>
-	sb.from("events").delete().eq("id", id).then(unwrap);
+	changed(sb.from("events").delete().eq("id", id));
 
 export const respond = (event_id, user_id, status, guests) =>
 	sb
@@ -192,21 +206,21 @@ export const addProposal = (event_id, data) =>
 		.insert({ event_id, ...data })
 		.then(unwrap);
 export const deleteProposal = (id) =>
-	sb.from("proposals").delete().eq("id", id).then(unwrap);
+	changed(sb.from("proposals").delete().eq("id", id));
 export const adoptProposal = (pid) =>
 	sb.rpc("adopt_proposal", { pid }).then(unwrap);
 
 /** value: 1, -1 oppure 0 per rimuovere il voto. */
 export const vote = (proposal_id, user_id, value) =>
-	(value
+	value
 		? sb
 				.from("votes")
 				.upsert(
 					{ proposal_id, user_id, value },
 					{ onConflict: "proposal_id,user_id" },
 				)
-		: sb.from("votes").delete().match({ proposal_id, user_id })
-	).then(unwrap);
+				.then(unwrap)
+		: changed(sb.from("votes").delete().match({ proposal_id, user_id }));
 
 export const addItem = (event_id, label) =>
 	sb.from("items").insert({ event_id, label }).then(unwrap);
@@ -219,7 +233,7 @@ export const claimItem = (id, user_id) =>
 		.select("id")
 		.then(unwrap);
 export const deleteItem = (id) =>
-	sb.from("items").delete().eq("id", id).then(unwrap);
+	changed(sb.from("items").delete().eq("id", id));
 
 /**
  * Iscrive alle modifiche delle tabelle indicate come [tabella, filtro?] e chiama onChange a ogni modifica.

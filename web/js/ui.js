@@ -45,12 +45,16 @@ const isDirty = (el) =>
 		? el.checked !== el.defaultChecked
 		: el.value !== el.defaultValue;
 
-/** Testo digitato e non ancora inviato, più focus e cursore: sopravvivono al re-render della stessa pagina. */
+/**
+ * Testo digitato e non ancora inviato, focus, cursore, pannelli aperti e password generate:
+ * sopravvivono al re-render della stessa pagina (aggiornamenti in tempo reale o periodici).
+ */
 function snapshot(root) {
 	const values = new Map();
 	for (const el of root.querySelectorAll("form[data-submit] [name]"))
-		if (isDirty(el))
+		if (isDirty(el) || el.hasAttribute("data-generate-on-success"))
 			values.set(keyOf(el), isToggle(el) ? el.checked : el.value);
+	const open = [...root.querySelectorAll("details")].map((d) => d.open);
 	const active = root.contains(document.activeElement)
 		? document.activeElement
 		: null;
@@ -60,10 +64,13 @@ function snapshot(root) {
 			start: active.selectionStart,
 			end: active.selectionEnd,
 		};
-	return { values, focus };
+	return { values, focus, open };
 }
 
-function restore(root, { values, focus }) {
+function restore(root, { values, focus, open }) {
+	const details = root.querySelectorAll("details");
+	if (details.length === open.length)
+		details.forEach((d, i) => (d.open = open[i]));
 	for (const el of root.querySelectorAll(
 		"form[data-submit] [name], [data-action]",
 	)) {
@@ -508,6 +515,8 @@ export const icon = (name, cls = "") =>
 	</svg>`;
 
 /** Avatar con iniziali; il colore è stabile perché derivato da `seed` (di solito l'id utente). */
+const AVATAR_HUES = [0, 28, 48, 142, 172, 196, 220, 258, 290, 325];
+
 export function avatar(name, seed = name, size = "") {
 	const label = name ?? "?";
 	const initials =
@@ -518,13 +527,19 @@ export function avatar(name, seed = name, size = "") {
 			.map((word) => [...word][0] ?? "")
 			.join("")
 			.toUpperCase() || "?";
-	// FNV-1a: distribuisce bene le tonalità anche tra id molto simili.
+	// FNV-1a più miscelazione finale (fmix32 di MurmurHash3): id diversi → tonalità della palette
+	// distribuite in modo uniforme. La palette evita colori quasi identici tra persone diverse.
 	let hash = 2166136261;
 	for (const c of String(seed))
-		hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
+		hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+	hash ^= hash >>> 16;
+	hash = Math.imul(hash, 0x85ebca6b);
+	hash ^= hash >>> 13;
+	hash = Math.imul(hash, 0xc2b2ae35);
+	hash ^= hash >>> 16;
 	return html`<span
 		class="avatar ${size && `avatar-${size}`}"
-		style="--hue: ${hash % 360}"
+		style="--hue: ${AVATAR_HUES[(hash >>> 0) % AVATAR_HUES.length]}"
 		title="${label}"
 		aria-hidden="true"
 		>${initials}</span
