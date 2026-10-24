@@ -8,6 +8,7 @@ const ESCAPES = {
 	"'": "&#39;",
 };
 
+/** Markup that is already escaped and must be inserted verbatim. */
 class Safe {
 	constructor(value) {
 		this.value = value;
@@ -17,6 +18,7 @@ class Safe {
 	}
 }
 
+/** Turns an interpolated value into markup: escapes text, flattens arrays, drops null and false. */
 const render = (v) =>
 	v instanceof Safe
 		? v.value
@@ -26,14 +28,13 @@ const render = (v) =>
 				? ""
 				: String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
-/** Template tag: esegue l'escape di ogni valore interpolato, tranne i frammenti html`` annidati. */
+/** Template tag that escapes every interpolated value except nested html`` fragments. */
 export const html = (strings, ...values) =>
 	new Safe(strings.reduce((out, s, i) => out + render(values[i - 1]) + s));
 
-// Chiave stabile di un campo o di un pulsante d'azione, per ritrovarlo dopo un re-render.
-// Checkbox e radio: conta lo stato "checked", e più caselle possono condividere lo stesso name.
 const isToggle = (el) => el.type === "checkbox" || el.type === "radio";
 
+/** Stable identity of a form field or action button, to find it again after a re-render. */
 const keyOf = (el) =>
 	el.name && el.form
 		? `field|${el.form.dataset.submit}|${el.name}${isToggle(el) ? `|${el.value}` : ""}`
@@ -45,10 +46,7 @@ const isDirty = (el) =>
 		? el.checked !== el.defaultChecked
 		: el.value !== el.defaultValue;
 
-/**
- * Testo digitato e non ancora inviato, focus, cursore, pannelli aperti e password generate:
- * sopravvivono al re-render della stessa pagina (aggiornamenti in tempo reale o periodici).
- */
+/** Captures unsent input, generated passwords, open panels, focus and caret, so a re-render can keep them. */
 function snapshot(root) {
 	const values = new Map();
 	for (const el of root.querySelectorAll("form[data-submit] [name]"))
@@ -67,6 +65,7 @@ function snapshot(root) {
 	return { values, focus, open };
 }
 
+/** Reapplies a `snapshot()` to freshly rendered markup. */
 function restore(root, { values, focus, open }) {
 	const details = root.querySelectorAll("details");
 	if (details.length === open.length)
@@ -87,11 +86,7 @@ function restore(root, { values, focus, open }) {
 	}
 }
 
-// ── Validazione dei form ─────────────────────────────────────────────────
-// Un solo validatore per tutta l'app (i form hanno noValidate): messaggi tradotti e coerenti,
-// errore sotto il campo, riepilogo degli errori di invio in un unico riquadro in fondo al form.
-
-/** Errore riferito a un campo: il messaggio compare sotto quel campo. */
+/** Error tied to a form field: its message is shown under that field. */
 export class FieldError extends Error {
 	constructor(field, message) {
 		super(message);
@@ -99,7 +94,7 @@ export class FieldError extends Error {
 	}
 }
 
-/** Messaggio leggibile per errori di rete, permessi e vincoli del database. */
+/** User-facing message for network, permission and database constraint errors. */
 export function describeError(err) {
 	const message = err?.message ?? String(err);
 	if (
@@ -117,6 +112,7 @@ export function describeError(err) {
 	return message;
 }
 
+/** Translated validation message for a field, or null when it is valid. */
 function invalidMessage(el) {
 	if (isToggle(el)) return null;
 	const value = el.value ?? "";
@@ -128,7 +124,6 @@ function invalidMessage(el) {
 		return t("validation.tooShort", { n: el.minLength });
 	if (el.maxLength > 0 && value.length > el.maxLength)
 		return t("validation.tooLong", { n: el.maxLength });
-	// I valori datetime-local ("AAAA-MM-GGTHH:MM") si confrontano come stringhe.
 	if (el.min && value && value < el.min)
 		return t("validation.tooEarly", { date: fmtDate(fromInput(el.min)) });
 	if (el.dataset.match && value !== el.form.elements[el.dataset.match].value)
@@ -136,6 +131,7 @@ function invalidMessage(el) {
 	return null;
 }
 
+/** Element that holds the error message of a field. */
 const errorBox = (el) => el.closest("fieldset, .field") ?? el.parentElement;
 
 function showFieldError(el, message) {
@@ -162,6 +158,7 @@ function clearFieldError(el) {
 	}
 }
 
+/** Shows a form-level error above the form actions. */
 function showFormError(form, message) {
 	let note = form.querySelector(":scope > .form-error");
 	if (!note) {
@@ -187,7 +184,7 @@ function clearErrors(form) {
 	if (note) note.hidden = true;
 }
 
-/** Valida tutti i campi; mostra gli errori e porta il focus sul primo. */
+/** Validates every field, shows the errors and focuses the first invalid one. */
 function validate(form) {
 	let first = null;
 	for (const el of form.elements) {
@@ -201,6 +198,7 @@ function validate(form) {
 	return !first;
 }
 
+/** Shows a submit error on its field, on the form, or as a toast if the form is gone. */
 function reportFormError(form, err) {
 	if (!form.isConnected) return notify(describeError(err), true);
 	const target = err instanceof FieldError && form.elements[err.field];
@@ -221,7 +219,10 @@ function submittedFields(form) {
 		}));
 }
 
-// Consolida solo i valori inviati: ciò che viene scritto durante l'attesa resta una bozza.
+/**
+ * Makes the submitted values the new defaults (or resets them with `data-reset-on-success`);
+ * anything typed while the request was running stays as an unsent draft.
+ */
 function finishForm(form, fields) {
 	const reset = form.hasAttribute("data-reset-on-success");
 	for (const { el, value, checked } of fields) {
@@ -243,19 +244,20 @@ function finishForm(form, fields) {
 	}
 }
 
-/**
- * Renderizza il markup in root e collega i click su [data-action] e i submit di form[data-submit].
- * Mentre un'azione è in corso le altre vengono ignorate, così i doppi click non generano richieste concorrenti.
- * Se si ri-renderizza la stessa pagina (es. aggiornamento in tempo reale) il testo non inviato e il focus restano.
- */
 const mounts = new WeakMap();
 
+/** Forgets the mount state of `root`, so the next `mount()` starts a fresh page. */
 export function resetMount(root) {
 	mounts.delete(root);
 	delete root.dataset.page;
 	root.classList.remove("is-busy");
 }
 
+/**
+ * Renders `markup` into `root` and wires `[data-action]` clicks and `form[data-submit]` submits to `actions`.
+ * One action runs at a time, so double clicks never send concurrent requests; a render that arrives
+ * meanwhile is applied when the action ends. Re-rendering the same page keeps unsent input and focus.
+ */
 export function mount(root, markup, actions = {}) {
 	const page = location.hash;
 	let state = mounts.get(root);
@@ -263,7 +265,6 @@ export function mount(root, markup, actions = {}) {
 		state = { page, busy: false, pending: null };
 		mounts.set(root, state);
 	}
-	// Una richiesta non deve perdere il suo form né il blocco dei doppi clic.
 	if (state.busy) {
 		state.pending = [markup, actions];
 		return;
@@ -298,7 +299,6 @@ export function mount(root, markup, actions = {}) {
 	for (const form of root.querySelectorAll("form[data-submit]"))
 		form.noValidate = true;
 	if (kept) restore(root, kept);
-	// L'errore di un campo sparisce appena lo si corregge.
 	root.oninput = (e) => e.target.form && clearFieldError(e.target);
 	root.onclick = (e) => {
 		const el = e.target.closest("[data-action]");
@@ -323,7 +323,6 @@ export function mount(root, markup, actions = {}) {
 				await fn(Object.fromEntries(new FormData(form)), form);
 				finishForm(form, fields);
 			} catch (err) {
-				// Applica anche le novità altrui, conservando bozza ed errore.
 				state.formError = { submit: form.dataset.submit, error: err };
 				reportFormError(form, err);
 			}
@@ -333,6 +332,7 @@ export function mount(root, markup, actions = {}) {
 	};
 }
 
+/** Runs `fn` and shows any error as a toast. */
 async function guard(fn) {
 	try {
 		await fn();
@@ -342,6 +342,7 @@ async function guard(fn) {
 }
 
 let toastTimer;
+/** Shows a short-lived toast message. */
 export function notify(message, isError = false) {
 	const toast = document.getElementById("toast");
 	toast.textContent = message;
@@ -351,8 +352,9 @@ export function notify(message, isError = false) {
 }
 
 /**
- * Dialog modale. Restituisce true (o il valore dell'input) se confermato, null se annullato.
- * `body` accetta un frammento html`` già sicuro; i suoi elementi [data-handler] chiamano `handlers[nome](el, dialog)`.
+ * Opens the modal dialog. Resolves to true, or the input value, when confirmed and to null otherwise.
+ * `body` is an html`` fragment whose `[data-handler]` elements call `handlers[name](el, dialog)`;
+ * `[data-copy]` buttons copy their value to the clipboard.
  */
 export function ask({
 	title,
@@ -410,7 +412,6 @@ export function ask({
 		</div>
 	</form>`;
 	dialog.returnValue = "";
-	// Stessa validazione dei form della pagina: "Annulla" chiude sempre, "OK" solo se i campi sono validi.
 	const form = dialog.querySelector("form");
 	form.noValidate = true;
 	form.onsubmit = (e) => {
@@ -462,7 +463,7 @@ export function ask({
 	});
 }
 
-// Icone in stile Lucide (24×24, stroke).
+/** Lucide-style icon paths (24×24, stroked). */
 const ICONS = {
 	alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
 	archive:
@@ -509,14 +510,16 @@ const ICONS = {
 	x: '<path d="M18 6 6 18M6 6l12 12"/>',
 };
 
+/** Inline SVG icon from `ICONS`. */
 export const icon = (name, cls = "") =>
 	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">
 		${new Safe(ICONS[name])}
 	</svg>`;
 
-/** Avatar con iniziali; il colore è stabile perché derivato da `seed` (di solito l'id utente). */
+/** Well-separated hues, so different people never get near-identical avatars. */
 const AVATAR_HUES = [0, 28, 48, 142, 172, 196, 220, 258, 290, 325];
 
+/** Initials avatar whose colour is derived from `seed` (usually the user id), so it never changes. */
 export function avatar(name, seed = name, size = "") {
 	const label = name ?? "?";
 	const initials =
@@ -527,8 +530,7 @@ export function avatar(name, seed = name, size = "") {
 			.map((word) => [...word][0] ?? "")
 			.join("")
 			.toUpperCase() || "?";
-	// FNV-1a più miscelazione finale (fmix32 di MurmurHash3): id diversi → tonalità della palette
-	// distribuite in modo uniforme. La palette evita colori quasi identici tra persone diverse.
+	// FNV-1a followed by the MurmurHash3 finalizer spreads similar ids evenly across the hues.
 	let hash = 2166136261;
 	for (const c of String(seed))
 		hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
@@ -546,6 +548,7 @@ export function avatar(name, seed = name, size = "") {
 	>`;
 }
 
+/** Random password without look-alike characters (0/O, 1/l/I). */
 export function randomPassword(length = 12) {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 	return Array.from(
@@ -554,6 +557,7 @@ export function randomPassword(length = 12) {
 	).join("");
 }
 
+/** Saves `content` as a file download. */
 export function downloadFile(name, content, type) {
 	const url = URL.createObjectURL(new Blob([content], { type }));
 	Object.assign(document.createElement("a"), {
@@ -565,8 +569,9 @@ export function downloadFile(name, content, type) {
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** Date → valore per <input type="datetime-local"> nel fuso orario locale. */
+/** Date as a local `<input type="datetime-local">` value. */
 export const toInput = (d) =>
 	`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
+/** `datetime-local` value as an ISO instant. */
 export const fromInput = (value) => new Date(value).toISOString();

@@ -1,4 +1,4 @@
--- Correzioni additive: non rieseguire o modificare le migration già applicate.
+-- Review fixes, applied on top of the previous migrations.
 begin;
 
 drop policy "items: create" on public.items;
@@ -10,7 +10,7 @@ create policy "items: create" on public.items
     and (claimed_by is null or claimed_by = auth.uid())
   );
 
--- La data proposta potrebbe essere scaduta dopo la sua creazione.
+-- adopt_proposal() rejects proposals whose date is no longer open.
 create or replace function public.adopt_proposal(pid uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -38,8 +38,8 @@ begin
   delete from public.proposals where id = pid;
 end $$;
 
--- Auth e profilo (compreso il ruolo iniziale) nascono nella stessa transazione.
--- raw_app_meta_data è scrivibile solo dal backend amministrativo, non dall'utente.
+-- Creates the profile with its initial admin role in the same transaction as the auth user.
+-- raw_app_meta_data can only be written by the admin API, never by the user.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin

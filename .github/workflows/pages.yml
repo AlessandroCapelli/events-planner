@@ -38,7 +38,7 @@ jobs:
                   key = os.environ['SUPABASE_ANON_KEY']
                   parsed = urlparse(url)
                   if parsed.scheme != 'https' or not parsed.netloc or not key:
-                      raise SystemExit('SUPABASE_URL e SUPABASE_ANON_KEY devono essere configurati')
+                      raise SystemExit('SUPABASE_URL and SUPABASE_ANON_KEY must be configured')
                   config = {'supabaseUrl': url, 'supabaseAnonKey': key}
                   Path('web/config.js').write_text('window.CONFIG = ' + json.dumps(config) + ';\n', encoding='utf-8')
                   PY

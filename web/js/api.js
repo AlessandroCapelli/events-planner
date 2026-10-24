@@ -1,16 +1,20 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
 
 const { supabaseUrl, supabaseAnonKey } = window.CONFIG ?? {};
+/** Whether `config.js` provides the Supabase project URL and publishable key. */
 export const configured = Boolean(supabaseUrl && supabaseAnonKey);
 const sb = configured ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
+/** Returns the `data` of a Supabase response, throwing its `error` if set. */
 const unwrap = ({ data, error }) => {
 	if (error) throw error;
 	return data;
 };
 
-// Una DELETE bloccata dalla RLS non dà errore: tocca 0 righe. La si trasforma in errore,
-// altrimenti l'app confermerebbe un'operazione mai avvenuta (es. evento appena concluso).
+/**
+ * Runs a write and fails with a permission error when it touched no rows: RLS silently
+ * filters writes it denies, e.g. deleting an event that has just ended.
+ */
 const changed = (query) =>
 	query
 		.select("id")
@@ -23,8 +27,10 @@ const changed = (query) =>
 			return rows;
 		});
 
-// Non assumere che il limite Data API sia 1.000: può essere più basso.
-// Si avanza delle righe effettive e si termina solo con una pagina vuota.
+/**
+ * Reads up to `limit` rows of `query()` page by page. It advances by the rows actually
+ * returned and stops at an empty page, so it works with any Data API row cap.
+ */
 async function allRows(query, limit = Infinity) {
 	const rows = [];
 	while (rows.length < limit) {
@@ -36,6 +42,7 @@ async function allRows(query, limit = Infinity) {
 	return rows;
 }
 
+/** Reads every row of `table` whose `column` is one of `ids`, in URL-safe chunks. */
 async function relatedRows(table, select, column, ids) {
 	const rows = [];
 	for (let offset = 0; offset < ids.length; offset += 100) {
@@ -49,19 +56,18 @@ async function relatedRows(table, select, column, ids) {
 	return rows;
 }
 
-// Gli hint !<fk> servono perché responses/votes fanno da tabelle ponte verso profiles.
 const EVENT_DETAIL = `
   *,
   creator:profiles!events_created_by_fkey(display_name)`;
 
-/** Invoca cb(user | null) solo quando cambia l'utente loggato (ignora i refresh del token). */
+/** Calls `cb(user | null)` whenever the signed-in user changes, ignoring token refreshes. */
 export function onUserChange(cb) {
 	let current;
 	sb.auth.onAuthStateChange((_event, session) => {
 		const user = session?.user ?? null;
 		if ((user?.id ?? null) === current) return;
 		current = user?.id ?? null;
-		// Differito: chiamare Supabase dentro questa callback può bloccare il lock di auth.
+		// Supabase calls made inside this callback would deadlock on the auth lock.
 		setTimeout(() => cb(user), 0);
 	});
 }
@@ -87,6 +93,7 @@ export const listProfiles = () =>
 
 const EVENT_SUMMARY = "id, title, starts_at, location, invite_only";
 
+/** Events of `query` with their responses, for the event list. */
 async function summaries(query, limit) {
 	const events = await allRows(query, limit);
 	const responses = await relatedRows(
@@ -104,7 +111,7 @@ async function summaries(query, limit) {
 	}));
 }
 
-/** Eventi ancora aperti (iniziati dopo `since`), dal più vicino. */
+/** Open events (starting after `since`), soonest first. */
 export const listUpcoming = (since) =>
 	summaries(() =>
 		sb
@@ -115,7 +122,7 @@ export const listUpcoming = (since) =>
 			.order("id"),
 	);
 
-/** Eventi conclusi, dal più recente; al massimo `limit`. */
+/** Past events, most recent first, at most `limit`. */
 export const listPast = (since, limit) =>
 	summaries(
 		() =>
@@ -127,6 +134,8 @@ export const listPast = (since, limit) =>
 				.order("id"),
 		limit,
 	);
+
+/** Event with creator, responses, proposals and their votes, items and invitations; null if not visible. */
 export async function getEvent(id) {
 	const event = await sb
 		.from("events")
@@ -175,7 +184,8 @@ export async function getEvent(id) {
 		})),
 	};
 }
-/** Crea (id null) o modifica un evento insieme ai suoi invitati; restituisce l'id. */
+
+/** Creates (`id` null) or updates an event together with its invitees; resolves to the event id. */
 export const saveEvent = (id, event, invitees) =>
 	sb
 		.rpc("save_event", {
@@ -210,7 +220,7 @@ export const deleteProposal = (id) =>
 export const adoptProposal = (pid) =>
 	sb.rpc("adopt_proposal", { pid }).then(unwrap);
 
-/** value: 1, -1 oppure 0 per rimuovere il voto. */
+/** Sets the vote of `user_id` on a proposal: 1, -1, or 0 to remove it. */
 export const vote = (proposal_id, user_id, value) =>
 	value
 		? sb
@@ -224,7 +234,7 @@ export const vote = (proposal_id, user_id, value) =>
 
 export const addItem = (event_id, label) =>
 	sb.from("items").insert({ event_id, label }).then(unwrap);
-/** Restituisce le righe aggiornate: vuoto se qualcun altro l'ha già prenotato (bloccato dalla RLS). */
+/** Claims (or releases, with null) an item; resolves to no rows when RLS refused, e.g. it was already taken. */
 export const claimItem = (id, user_id) =>
 	sb
 		.from("items")
@@ -236,9 +246,8 @@ export const deleteItem = (id) =>
 	changed(sb.from("items").delete().eq("id", id));
 
 /**
- * Iscrive alle modifiche delle tabelle indicate come [tabella, filtro?] e chiama onChange a ogni modifica.
- * onChange viene chiamata anche dopo una riconnessione, per recuperare le modifiche perse nel frattempo.
- * Restituisce la funzione che chiude l'iscrizione.
+ * Calls `onChange` on every Realtime change of the given `[table, filter?]` bindings, and after each
+ * (re)connection to catch up on changes missed meanwhile. Returns the unsubscribe function.
  */
 export function subscribe(bindings, onChange) {
 	const channel = sb.channel(`live:${crypto.randomUUID()}`);
@@ -259,8 +268,7 @@ export function subscribe(bindings, onChange) {
 				{ event: "UPDATE", schema: "public", table, filter },
 				onChange,
 			);
-			// Con RLS e replica identity predefinita una DELETE ha solo la PK.
-			// Si invalida la vista senza esporre event_id o user_id nelle righe eliminate.
+			// DELETE payloads only carry the primary key, so they can't be filtered.
 			channel.on(
 				"postgres_changes",
 				{ event: "DELETE", schema: "public", table },
@@ -270,7 +278,6 @@ export function subscribe(bindings, onChange) {
 	}
 	channel.subscribe((status) => {
 		if (status !== "SUBSCRIBED") return;
-		// Recupera anche le modifiche avvenute tra il caricamento e il primo join.
 		onChange();
 	});
 	return () => sb.removeChannel(channel);
@@ -282,7 +289,7 @@ export const rotateCalendarToken = () =>
 export const deleteCalendarToken = () =>
 	sb.rpc("delete_calendar_token").then(unwrap);
 
-/** Link https del feed iCalendar personale (Edge Function "calendar"). */
+/** HTTPS URL of the personal iCalendar feed served by the `calendar` Edge Function. */
 export const calendarFeedUrl = (token, lang) => {
 	const url = new URL(`${supabaseUrl}/functions/v1/calendar`);
 	url.search = new URLSearchParams({
@@ -293,6 +300,7 @@ export const calendarFeedUrl = (token, lang) => {
 	return url.href;
 };
 
+/** Calls the `admin-users` Edge Function; errors carry the function's `code`. */
 export async function admin(action, payload = {}) {
 	const { data, error } = await sb.functions.invoke("admin-users", {
 		body: { action, ...payload },

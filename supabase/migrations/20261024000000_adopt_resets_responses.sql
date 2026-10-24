@@ -1,5 +1,5 @@
--- Adottare una proposta cambia data e/o luogo dell'evento:
--- le risposte date per la versione precedente non sono più valide e vengono azzerate.
+-- Adopting a proposal changes the event date or place,
+-- so the responses given for the previous version are cleared.
 
 create or replace function public.adopt_proposal(pid uuid) returns void
 language plpgsql security definer set search_path = '' as $$

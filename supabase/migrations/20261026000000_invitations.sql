@@ -1,12 +1,12 @@
--- Invitati: un evento è per tutto il gruppo (predefinito) oppure solo per alcuni membri.
--- La visibilità è definita in un solo punto, event_visible_to(), usato da RLS, Realtime e calendario.
--- Creazione e modifica passano da save_event(), che salva evento e invitati in un'unica transazione.
+-- Invite-only events. Visibility is defined once, in event_visible_to(), and shared by
+-- RLS, Realtime and the calendar feed. Events and invitees are saved together by
+-- save_event(), in a single transaction.
 
 alter table public.events add column invite_only boolean not null default false;
 
--- Realtime inoltra le cancellazioni a tutti gli iscritti senza RLS, con la sola chiave primaria.
--- Con chiavi (evento, utente) rivelerebbe chi era invitato o aveva risposto a un evento privato:
--- si usano chiavi surrogate casuali e l'unicità di (evento, utente) passa a un vincolo unique.
+-- Realtime sends DELETEs to every subscriber, unfiltered, with only the primary key.
+-- An (event, user) key would leak who was invited to or answered a private event,
+-- so these tables use random surrogate keys plus a unique (event, user) constraint.
 create table public.invitations (
   id       uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events on delete cascade,
@@ -23,8 +23,8 @@ alter table public.votes drop constraint votes_pkey;
 alter table public.votes add column id uuid not null default gen_random_uuid() primary key;
 alter table public.votes add unique (proposal_id, user_id);
 
--- Chi vede un evento: tutti se è per il gruppo; altrimenti creatore, invitati e admin.
--- Interna: accetta un utente qualsiasi, quindi non è eseguibile dal client (svelerebbe chi è invitato).
+-- Everyone sees group events; invite-only events are visible to creator, invitees and admins.
+-- Internal: it takes any user id, so clients cannot execute it.
 create function public.event_visible_to(eid uuid, uid uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
@@ -46,8 +46,8 @@ language sql stable security definer set search_path = '' as $$
 $$;
 grant execute on function public.can_see_event(uuid) to authenticated;
 
--- Le scritture su risposte, proposte, voti e oggetti richiedono ora anche la visibilità.
--- Rinominare mantiene i riferimenti nelle policy esistenti.
+-- Writes on child rows now also require visibility. Renaming the functions
+-- keeps the existing policies pointing at them.
 alter function public.event_is_open(uuid) rename to event_is_writable;
 alter function public.proposal_is_open(uuid) rename to proposal_is_writable;
 
@@ -62,7 +62,7 @@ language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.proposals where id = pid and public.event_is_writable(event_id))
 $$;
 
--- events: si legge solo ciò che si vede; si scrive solo tramite save_event()
+-- events: readable when visible; written only through save_event()
 drop policy "events: read" on public.events;
 create policy "events: read" on public.events
   for select to authenticated using (public.can_see_event(id));
@@ -72,7 +72,7 @@ drop policy "events: update" on public.events;
 revoke insert, update on public.events from authenticated;
 revoke update (title, description, location, starts_at) on public.events from authenticated;
 
--- invitations: visibili insieme all'evento; si modificano solo tramite save_event()
+-- invitations: readable with their event; written only through save_event()
 alter table public.invitations enable row level security;
 revoke all on public.invitations from anon, authenticated;
 grant all on public.invitations to service_role;
@@ -91,7 +91,7 @@ begin
   end if;
 end $$;
 
--- Crea (p_id null) o modifica un evento con i suoi invitati.
+-- Creates (p_id null) or updates an event together with its invitees.
 create function public.save_event(
   p_id uuid,
   p_title text,
@@ -139,7 +139,7 @@ begin
     where u is distinct from (select created_by from public.events where id = eid)
     on conflict do nothing;
 
-    -- Chi non vede più l'evento esce anche da risposte, voti e prenotazioni.
+    -- Users who can no longer see the event lose their responses, votes and claims.
     delete from public.responses r
      where r.event_id = eid and not public.event_visible_to(eid, r.user_id);
     delete from public.votes v using public.proposals p

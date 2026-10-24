@@ -1,4 +1,3 @@
-// Gestione utenti riservata agli admin: list, create, update, delete.
 import { createClient, type User } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -14,13 +13,18 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 	auth: { persistSession: false },
 });
 
-/** Attende una chiamata Supabase e restituisce `data`, oppure lancia l'errore. */
+/** Awaits a Supabase query and returns its `data`, throwing its `error` if set. */
 async function must<T extends { data: unknown; error: unknown }>(query: PromiseLike<T>): Promise<T['data']> {
 	const { data, error } = await query;
 	if (error) throw error;
 	return data;
 }
 
+/**
+ * Admin-only user management. The POST body selects an `action`:
+ * `list`, `create`, `update` or `delete`. Errors carry a `code`
+ * (e.g. `email_exists`, `weak_password`) that the client translates.
+ */
 Deno.serve(async (req) => {
 	if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 	if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -79,7 +83,6 @@ Deno.serve(async (req) => {
 				return json({ error: `Unknown action: ${action}` }, 400);
 		}
 	} catch (err) {
-		// Il codice (es. email_exists, weak_password) permette al client di mostrare un messaggio tradotto.
 		const { message, code } = err as { message?: string; code?: string };
 		return json({ error: message ?? String(err), code }, 400);
 	}

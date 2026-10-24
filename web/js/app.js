@@ -38,14 +38,16 @@ const MAX_GUESTS = 20;
 const PAST_PAGE = 20;
 const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
 
-/** Profilo dell'utente loggato (con email), o null. */
+/** Profile of the signed-in user, with their email, or null. */
 let me = null;
-/** Contatore di navigazione: scarta le viste caricate dopo che l'utente ha già cambiato pagina. */
+/** Bumped by every `show()`, so a slower, older view never replaces a newer one. */
 let seq = 0;
+/** Bumped by every navigation. */
 let pageVersion = 0;
+/** Bumped by every sign-in and sign-out. */
 let authVersion = 0;
 
-// Ogni callback conserva la pagina e la sessione che l'hanno avviata.
+/** Returns a check that stays true while the current page and session are still the ones shown. */
 function pageScope() {
 	const page = pageVersion;
 	const auth = authVersion;
@@ -54,17 +56,20 @@ function pageScope() {
 		page === pageVersion && auth === authVersion && hash === location.hash;
 }
 
+/** Returns a function that quietly re-renders `view` while its page is still shown. */
 function refreshView(view, args = []) {
 	const current = pageScope();
 	return () => (current() ? show(view, args, { quiet: true }) : undefined);
 }
-/** Quanti eventi conclusi mostrare in lista ("Mostra eventi più vecchi" ne aggiunge altri). */
+
+/** Past events shown in the list; "show older events" raises it. */
 let pastLimit = PAST_PAGE;
-/** Chiude l'iscrizione in tempo reale della pagina corrente. */
+/** Stops the live updates of the current page. */
 let stopLive = () => {};
+/** Restarts the safety refresh timer of the current page. */
 let rescheduleLive = () => {};
 
-// `live` elenca le tabelle da osservare ([tabella, filtro?]) per aggiornare la pagina in tempo reale.
+/** Hash routes; `live` lists the `[table, filter?]` bindings that refresh the page in real time. */
 const routes = [
 	{
 		path: /^\/$/,
@@ -91,8 +96,8 @@ const routes = [
 ];
 
 /**
- * Esegue una vista e ne monta il risultato, se nel frattempo non si è cambiata pagina.
- * Con `quiet` (aggiornamenti in background) un errore lascia la pagina com'è invece di sostituirla.
+ * Runs a view and mounts its result, unless the user has navigated away meanwhile.
+ * With `quiet` (background refreshes) an error keeps the current page instead of replacing it.
  */
 async function show(view, args = [], { quiet = false } = {}) {
 	const current = ++seq;
@@ -110,7 +115,10 @@ async function show(view, args = [], { quiet = false } = {}) {
 	}
 }
 
-/** Aggiorna la pagina quando cambiano le tabelle osservate, quando la scheda torna visibile e dopo una riconnessione. */
+/**
+ * Keeps the current page fresh: refreshes it on Realtime changes, when the tab becomes visible again,
+ * after a reconnection and on a safety timer. It also signs out a user whose profile was deleted.
+ */
 function goLive(bindings, refresh) {
 	let timer;
 	let poll;
@@ -135,12 +143,12 @@ function goLive(bindings, refresh) {
 			}
 			await refresh();
 		} catch {
-			// Offline: conserva la pagina e ritenta alla prossima rivalidazione.
+			/* offline: keep the page and retry on the next refresh */
 		} finally {
 			running = false;
 		}
 	};
-	// Un'azione tocca spesso più righe (es. adottare una proposta): un solo refresh per raffica.
+	// One action often changes several rows (e.g. adopting a proposal): refresh once per burst.
 	const schedule = () => {
 		clearTimeout(timer);
 		timer = setTimeout(update, 250);
@@ -170,10 +178,10 @@ function goLive(bindings, refresh) {
 	};
 }
 
-/** Ricarica di sicurezza: le modifiche arrivano già in tempo reale, questa recupera solo quelle perse. */
+/** Safety refresh period: changes arrive in real time, this only catches the ones that were missed. */
 const SAFETY_REFRESH = 5 * 60e3;
 
-// Prossimo risveglio: entro SAFETY_REFRESH, oppure prima se un evento inizia, si conclude o scocca la mezzanotte.
+/** Delay until the next refresh: `SAFETY_REFRESH`, or sooner if an event shown starts or ends, or at midnight. */
 function nextRefreshDelay() {
 	const now = Date.now();
 	const date = new Date(now);
@@ -200,6 +208,7 @@ function nextRefreshDelay() {
 	);
 }
 
+/** Renders the page for the current hash and starts its live updates. */
 async function render() {
 	++pageVersion;
 	++seq;
@@ -226,6 +235,7 @@ async function render() {
 	await show(route.view, args);
 }
 
+/** Renders the settings menu, or just the language switch when signed out. */
 function renderNav() {
 	mount(
 		nav,
@@ -278,7 +288,7 @@ function renderNav() {
 	);
 }
 
-// Chiude il menu impostazioni cliccando fuori, su una voce o premendo Esc.
+// The settings menu closes on an outside click, on a menu item and on Escape.
 document.addEventListener("click", (e) => {
 	for (const menu of document.querySelectorAll("details.menu[open]")) {
 		if (!menu.contains(e.target) || e.target.closest(".menu-item"))
@@ -291,9 +301,7 @@ document.addEventListener("keydown", (e) => {
 		menu.open = false;
 });
 
-// ── Helper ───────────────────────────────────────────────────────────────
-
-/** Persone per stato, contando anche gli accompagnatori di chi viene o forse viene. */
+/** People per status, counting the guests of those who are going or might go. */
 const tally = (responses) =>
 	responses.reduce(
 		(sum, r) => {
@@ -303,6 +311,7 @@ const tally = (responses) =>
 		{ yes: 0, maybe: 0, no: 0 },
 	);
 
+/** Net votes of a proposal. */
 const score = (proposal) => proposal.votes.reduce((sum, v) => sum + v.value, 0);
 
 const byName = (a, b) =>
@@ -386,18 +395,19 @@ const deleteButton = (action, id, name) =>
 
 const eventUrl = (id) => `${location.origin}${location.pathname}#/event/${id}`;
 
+/** Checks or unchecks every selectable invitee. */
 const setInvitees = (form, checked) => {
 	for (const box of form.querySelectorAll(
 		'input[name="invitees"]:not(:disabled)',
 	))
 		box.checked = checked;
-	// Come un clic dell'utente: aggiorna lo stato del form (es. toglie l'errore "nessun invitato").
+	// Like a user click, this clears the "no invitees" error.
 	form.querySelector('input[name="invitees"]')?.dispatchEvent(
 		new Event("input", { bubbles: true }),
 	);
 };
 
-/** Gli errori di save_event arrivano come codice: li si traduce, legandoli al campo quando possibile. */
+/** Translates the error codes of `save_event` and `adopt_proposal`, tying them to a field when possible. */
 function eventSaveError(err) {
 	if (err.message === "event_in_past")
 		return new FieldError("starts_at", t("validation.eventEnded"));
@@ -405,7 +415,7 @@ function eventSaveError(err) {
 	return err;
 }
 
-/** Errori di Supabase Auth sulle password, riportati sul campo password. */
+/** Maps Supabase Auth password errors to the password field. */
 function passwordError(err, field = "password") {
 	if (err.code === "same_password")
 		return new FieldError(field, t("validation.samePassword"));
@@ -414,26 +424,23 @@ function passwordError(err, field = "password") {
 	return err;
 }
 
-/** Evento "tutto il giorno": l'orario, che si perderebbe, va in testa alla descrizione. */
+/**
+ * Single-event iCalendar file. The event is all-day, like in the synced feed,
+ * so its time goes at the top of the description.
+ */
 function toIcs(event) {
 	const day = (date) => toInput(date).slice(0, 10).replaceAll("-", "");
 	const text = (value) =>
 		value.replace(/[\\;,]/g, "\\$&").replace(/\r\n|\r|\n/g, "\\n");
-	// RFC 5545: al massimo 75 byte per riga, senza dividere caratteri UTF-8.
 	const encoder = new TextEncoder();
 	const fold = (line) => {
 		const parts = [];
 		let current = "";
-		let bytes = 0;
 		for (const char of line) {
-			const size = encoder.encode(char).length;
-			if (bytes + size > (parts.length ? 74 : 75)) {
+			if (encoder.encode(current + char).length > (parts.length ? 74 : 75)) {
 				parts.push(current);
-				current = "";
-				bytes = 0;
-			}
-			current += char;
-			bytes += size;
+				current = char;
+			} else current += char;
 		}
 		parts.push(current);
 		return parts.join("\r\n ");
@@ -473,6 +480,7 @@ function toIcs(event) {
 	);
 }
 
+/** File-name-safe version of a title. */
 const slug = (value) =>
 	value
 		.normalize("NFD")
@@ -481,7 +489,7 @@ const slug = (value) =>
 		.replace(/^-|-$/g, "")
 		.toLowerCase() || "event";
 
-/** Finestra di condivisione: anteprima, app di messaggistica, condivisione di sistema e link da copiare. */
+/** Share dialog: preview, messaging apps, the system share sheet and a link to copy. */
 function shareEvent(event) {
 	const url = eventUrl(event.id);
 	const summary = [
@@ -577,15 +585,14 @@ function shareEvent(event) {
 					});
 					dialog.close();
 				} catch {
-					// Condivisione annullata dall'utente: la finestra resta aperta.
+					/* cancelled: the dialog stays open */
 				}
 			},
 		},
 	});
 }
 
-// ── Viste ────────────────────────────────────────────────────────────────
-// Ogni vista restituisce [markup, actions] da montare, oppure undefined se ha già rediretto.
+// Views resolve to the [markup, actions] to mount, or to undefined after redirecting.
 
 function viewLogin() {
 	return [
@@ -641,6 +648,7 @@ function viewLogin() {
 	];
 }
 
+/** Upcoming and past events, grouped by day or month. */
 async function viewEvents() {
 	const reload = refreshView(viewEvents);
 	const since = openSince();
@@ -650,7 +658,6 @@ async function viewEvents() {
 	]);
 	const hasMore = past.length > pastLimit;
 
-	// Dentro ogni sezione gli eventi sono raggruppati per giorno o mese.
 	const groupsOf = (events) => {
 		const groups = [];
 		for (const event of events) {
@@ -733,6 +740,7 @@ async function viewEvents() {
 	];
 }
 
+/** List card of an event. */
 function eventCard(event) {
 	const past = isPast(event.starts_at);
 	const mine = event.responses.find((r) => r.user_id === me.id);
@@ -790,6 +798,7 @@ function eventCard(event) {
 	</li>`;
 }
 
+/** Event page: details, RSVP, attendees, proposals and items. Past events are read-only. */
 async function viewEvent(id) {
 	const current = pageScope();
 	const [event, members] = await Promise.all([
@@ -810,7 +819,7 @@ async function viewEvent(id) {
 		];
 	}
 
-	// Un evento concluso è in sola lettura; solo un admin può ancora eliminarlo (come impone la RLS).
+	// Like RLS: a past event is read-only, and only an admin can still delete it.
 	const closed = isPast(event.starts_at);
 	const isOwner = event.created_by === me.id;
 	const canEdit = !closed && (me.is_admin || isOwner);
@@ -826,7 +835,6 @@ async function viewEvent(id) {
 	const items = [...event.items].sort((a, b) =>
 		a.created_at.localeCompare(b.created_at),
 	);
-	// A chi è rivolto l'evento: gli invitati (più l'organizzatore) oppure tutto il gruppo.
 	const invited = new Set(event.invitations.map((i) => i.user_id));
 	const audience = event.invite_only
 		? members.filter((m) => invited.has(m.id) || m.id === event.created_by)
@@ -1395,6 +1403,7 @@ async function viewEvent(id) {
 	];
 }
 
+/** New event form, or edit form of event `id`. */
 async function viewEventForm(id) {
 	const current = pageScope();
 	const [event, members] = await Promise.all([
@@ -1407,7 +1416,7 @@ async function viewEventForm(id) {
 	if (event && isPast(event.starts_at))
 		return void (location.hash = `#/event/${id}`);
 	const back = id ? `#/event/${id}` : "#/";
-	// L'organizzatore vede sempre l'evento: compare in elenco ma non si può togliere.
+	// The organizer always sees the event, so they are listed but can't be unchecked.
 	const organizer = event?.created_by ?? me.id;
 	const invited = new Set(event?.invitations.map((i) => i.user_id));
 	const inviteOnly = Boolean(event?.invite_only);
@@ -1584,6 +1593,7 @@ ${event?.description}</textarea
 	];
 }
 
+/** Profile, password and calendar sync settings. */
 async function viewAccount() {
 	const current = pageScope();
 	const reload = refreshView(viewAccount);
@@ -1801,6 +1811,7 @@ async function viewAccount() {
 	];
 }
 
+/** User management, for admins only. */
 async function viewAdmin() {
 	const current = pageScope();
 	const reload = refreshView(viewAdmin);
@@ -2033,8 +2044,6 @@ async function viewAdmin() {
 	];
 }
 
-// ── Avvio ────────────────────────────────────────────────────────────────
-
 window.addEventListener("hashchange", render);
 
 if (api.configured) {
@@ -2050,13 +2059,11 @@ if (api.configured) {
 			try {
 				const profile = await api.getProfile(user.id);
 				if (version !== authVersion) return;
-				// Utente eliminato dall'admin: la sessione è ancora valida ma il profilo non esiste più.
+				// A deleted user can still hold a valid session.
 				if (!profile) return void api.signOut();
 				me = { ...profile, email: user.email };
 			} catch (err) {
 				if (version !== authVersion) return;
-				stopLive();
-				renderNav();
 				return void mount(app, errorState(describeError(err)));
 			}
 		}

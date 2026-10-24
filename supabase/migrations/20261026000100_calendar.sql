@@ -1,5 +1,5 @@
--- Calendario sincronizzato: ogni utente può attivare un link personale e segreto da aggiungere
--- a Google, Apple o Outlook Calendar. Il feed contiene solo gli eventi che quell'utente vede.
+-- Calendar sync: each user can enable a secret personal feed URL for Google, Apple
+-- or Outlook Calendar. The feed contains only the events that user can see.
 
 create table public.calendar_tokens (
   user_id    uuid primary key references public.profiles on delete cascade,
@@ -7,7 +7,7 @@ create table public.calendar_tokens (
   created_at timestamptz not null default now()
 );
 
--- Nessuna policy e nessun permesso al client: si accede solo con le funzioni qui sotto.
+-- No policies and no client grants: access goes through the functions below.
 alter table public.calendar_tokens enable row level security;
 revoke all on public.calendar_tokens from anon, authenticated;
 grant all on public.calendar_tokens to service_role;
@@ -17,7 +17,7 @@ language sql stable security definer set search_path = '' as $$
   select token from public.calendar_tokens where user_id = auth.uid()
 $$;
 
--- Crea il token o lo sostituisce (il vecchio link smette di funzionare). 64 caratteri esadecimali casuali.
+-- Creates or replaces the token (two random UUIDs, 244 bits); the previous URL stops working.
 create function public.rotate_calendar_token() returns text
 language sql security definer set search_path = '' as $$
   insert into public.calendar_tokens (user_id, token)
@@ -31,7 +31,7 @@ language sql security definer set search_path = '' as $$
   delete from public.calendar_tokens where user_id = auth.uid()
 $$;
 
--- Usata solo dalla Edge Function "calendar" (service role).
+-- Used only by the "calendar" Edge Function (service role).
 create function public.calendar_feed(p_token text)
 returns table (id uuid, title text, starts_at timestamptz, location text, description text, my_status text)
 language plpgsql stable security definer set search_path = '' as $$

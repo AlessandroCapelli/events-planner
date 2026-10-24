@@ -1,7 +1,7 @@
--- Events Planner: schema, Row Level Security e funzioni.
--- Un evento è "aperto" fino a 12 ore dopo l'inizio; dopo non è più visibile né modificabile.
+-- Initial schema: tables, helper functions and Row Level Security.
+-- An event is "open" until 12 hours after it starts.
 
--- ── Tabelle ────────────────────────────────────────────────────────────────
+-- ── Tables ─────────────────────────────────────────────────────────────────
 
 create table public.profiles (
   id           uuid primary key references auth.users on delete cascade,
@@ -57,7 +57,7 @@ create table public.items (
 );
 create index on public.items (event_id);
 
--- ── Funzioni di supporto ───────────────────────────────────────────────────
+-- ── Helpers ────────────────────────────────────────────────────────────────
 
 create function public.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -75,7 +75,7 @@ language sql stable security definer set search_path = '' as $$
       or exists (select 1 from public.events where id = eid and created_by = auth.uid())
 $$;
 
--- Crea il profilo quando l'admin crea un utente (display_name da user_metadata).
+-- Creates the profile of a new auth user, named after user_metadata.display_name.
 create function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -88,7 +88,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Applica una proposta all'evento e la rimuove (solo creatore dell'evento o admin).
+-- Applies a proposal to its event and deletes it. Event creator or admin only.
 create function public.adopt_proposal(pid uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -113,8 +113,8 @@ revoke execute on function public.adopt_proposal(uuid) from public, anon;
 grant execute on function public.adopt_proposal(uuid) to authenticated;
 
 -- ── Row Level Security ─────────────────────────────────────────────────────
--- Le sottoquery su events/proposals ereditano la loro RLS: un evento passato
--- è invisibile, quindi anche risposte, proposte, voti e cose da portare lo sono.
+-- Subqueries on events and proposals inherit their RLS, so child rows are
+-- visible exactly when their event is.
 
 alter table public.profiles  enable row level security;
 alter table public.events    enable row level security;
@@ -123,7 +123,7 @@ alter table public.proposals enable row level security;
 alter table public.votes     enable row level security;
 alter table public.items     enable row level security;
 
--- Privilegi espliciti: funziona sia con "Automatically expose new tables" attivo sia disattivo.
+-- Explicit grants, independent of the "Automatically expose new tables" setting.
 revoke all on public.profiles, public.events, public.responses, public.proposals, public.votes, public.items from anon, authenticated;
 grant all on public.profiles, public.events, public.responses, public.proposals, public.votes, public.items to service_role;
 grant select on public.profiles, public.events, public.responses, public.proposals, public.votes, public.items to authenticated;
@@ -131,7 +131,7 @@ grant insert, delete on public.events, public.responses, public.proposals, publi
 grant update on public.responses, public.votes to authenticated;
 grant execute on function public.is_admin(), public.is_open(timestamptz), public.can_manage_event(uuid) to authenticated;
 
--- Colonne aggiornabili dal client (il resto passa da RLS o dalla Edge Function).
+-- Columns the client may update; everything else goes through functions.
 grant update (display_name) on public.profiles to authenticated;
 grant update (title, description, location, starts_at) on public.events to authenticated;
 grant update (claimed_by) on public.items to authenticated;
@@ -195,7 +195,7 @@ create policy "votes: update own" on public.votes
 create policy "votes: delete own" on public.votes
   for delete to authenticated using (user_id = auth.uid());
 
--- items: chiunque può prenotare un oggetto libero o liberare il proprio
+-- items: anyone can claim a free item or release their own
 create policy "items: read" on public.items
   for select to authenticated
   using (exists (select 1 from public.events e where e.id = items.event_id));

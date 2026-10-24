@@ -1,5 +1,5 @@
--- Aggiornamenti in tempo reale: Supabase Realtime inoltra ai client iscritti le modifiche
--- di queste tabelle, applicando la RLS di ciascun utente. Idempotente.
+-- Publishes these tables to Supabase Realtime, which applies each subscriber's RLS.
+-- Idempotent.
 
 do $$
 declare

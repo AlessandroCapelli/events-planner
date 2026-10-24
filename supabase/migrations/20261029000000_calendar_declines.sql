@@ -1,5 +1,4 @@
--- Il calendario personale include gli eventi visibili, esclusi quelli rifiutati.
--- La stessa URL riflette nuovi eventi e cambi di risposta a ogni lettura.
+-- The calendar feed leaves out events the user declined.
 create or replace function public.calendar_feed(p_token text)
 returns table (id uuid, title text, starts_at timestamptz, location text, description text, my_status text)
 language plpgsql stable security definer set search_path = '' as $$

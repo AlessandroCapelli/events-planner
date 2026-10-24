@@ -1,5 +1,5 @@
--- Aggiorna save_event sui database che hanno già applicato invitations.sql.
--- Conserva firma e permessi; consente eventi iniziati da meno di 12 ore.
+-- save_event() accepts events that started less than 12 hours ago (is_open),
+-- so an event can be created for right now. Signature and grants are unchanged.
 
 create or replace function public.save_event(
   p_id uuid,
@@ -19,8 +19,6 @@ begin
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
 
-  -- Un evento si crea o si modifica finché è "aperto" (iniziato da meno di 12 ore, come per l'archivio):
-  -- così si può creare anche un evento che inizia adesso o è appena iniziato.
   if not public.is_open(p_starts_at) then
     raise exception 'event_in_past' using errcode = '22023';
   end if;
@@ -48,7 +46,7 @@ begin
     where u is distinct from (select created_by from public.events where id = eid)
     on conflict do nothing;
 
-    -- Chi non vede più l'evento esce anche da risposte, voti e prenotazioni.
+    -- Users who can no longer see the event lose their responses, votes and claims.
     delete from public.responses r
      where r.event_id = eid and not public.event_visible_to(eid, r.user_id);
     delete from public.votes v using public.proposals p

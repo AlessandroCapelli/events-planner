@@ -1,6 +1,6 @@
 /*
- * Tema scuro unico. Tutte le misure derivano dai token:
- * spaziature su griglia di 4px, controlli alti 40px (44px su touch), raggi 8/12/16/20.
+ * Dark theme only. Every measure comes from the tokens below: a 4px spacing grid,
+ * 40px controls (44px on touch screens) and 8/12/16/20px radii.
  */
 
 :root {
@@ -16,7 +16,7 @@
 	--text-2: #b9bdcc;
 	--muted: #8b90a4;
 
-	/* Brand: stesso gradiente di favicon.svg */
+	/* Same gradient as favicon.svg */
 	--accent: #6366f1;
 	--accent-hover: #7375f4;
 	--accent-text: #a5b4fc;
@@ -85,7 +85,7 @@
 html {
 	-webkit-text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
-	/* Spazio della barra di scorrimento sempre riservato: il layout non salta tra pagine lunghe e corte */
+	/* Keeps the layout from shifting between pages with and without a scrollbar */
 	scrollbar-gutter: stable;
 }
 
@@ -196,7 +196,7 @@ button {
 	cursor: progress;
 }
 
-/* ── Topbar e menu impostazioni ────────────────────────────────────────── */
+/* ── Top bar and settings menu ─────────────────────────────────────────── */
 
 .topbar {
 	position: sticky;
@@ -405,7 +405,7 @@ button {
 	color: var(--muted);
 }
 
-/* ── Bottoni ───────────────────────────────────────────────────────────── */
+/* ── Buttons ───────────────────────────────────────────────────────────── */
 
 .btn {
 	display: inline-flex;
@@ -537,7 +537,7 @@ button {
 	cursor: not-allowed;
 }
 
-/* Segnaposto per mantenere allineate le colonne di azioni */
+/* Placeholder that keeps action columns aligned */
 .btn-icon[aria-hidden="true"] {
 	visibility: hidden;
 }
@@ -547,7 +547,7 @@ button {
 	color: var(--no-text);
 }
 
-/* ── Card, pill, avatar, data ──────────────────────────────────────────── */
+/* ── Cards, pills, avatars, date tiles ─────────────────────────────────── */
 
 .card {
 	padding: var(--sp-5);
@@ -726,9 +726,8 @@ button {
 	font-size: var(--fs-lg);
 }
 
-/* ── Lista eventi ──────────────────────────────────────────────────────── */
+/* ── Event list ────────────────────────────────────────────────────────── */
 
-/* Due sezioni distinte: "In programma" e "Conclusi", ognuna con i suoi gruppi per giorno o mese */
 .events-section+.events-section {
 	margin-top: var(--sp-8);
 }
@@ -806,7 +805,7 @@ button {
 	transform: translateY(-1px);
 }
 
-/* Eventi conclusi: stessi contenuti, toni spenti */
+/* Past events: same content, muted tones */
 .event-card.past {
 	background: transparent;
 }
@@ -894,7 +893,7 @@ button {
 	height: 16px;
 }
 
-/* ── Dettaglio evento ──────────────────────────────────────────────────── */
+/* ── Event page ────────────────────────────────────────────────────────── */
 
 .event-layout {
 	display: flex;
@@ -902,7 +901,7 @@ button {
 	gap: var(--sp-4);
 }
 
-/* Su mobile le colonne spariscono e l'ordine delle card lo decide `order`. */
+/* On mobile the columns collapse and `order` sets the card order. */
 .col {
 	display: contents;
 }
@@ -1054,7 +1053,7 @@ button {
 	transform: scale(0.98);
 }
 
-/* Evento concluso: la risposta resta visibile ma non si può cambiare */
+/* Past event: the response stays visible but can't be changed */
 .rsvp-option:disabled {
 	cursor: default;
 	transform: none;
@@ -1156,7 +1155,7 @@ button {
 	color: var(--no-text);
 }
 
-/* minmax(0, 1fr): senza, la colonna si allarga al nome più lungo e il contenuto esce dalla card */
+/* minmax(0, 1fr) stops the column from growing to fit the longest name */
 .rows,
 .people,
 .user-list {
@@ -1303,7 +1302,7 @@ button {
 	height: 16px;
 }
 
-/* ── Form ──────────────────────────────────────────────────────────────── */
+/* ── Forms ─────────────────────────────────────────────────────────────── */
 
 .field {
 	display: flex;
@@ -1382,7 +1381,7 @@ input[type="checkbox"] {
 	accent-color: var(--accent);
 }
 
-/* 16px evita lo zoom automatico di iOS sui campi */
+/* 16px prevents iOS from zooming into focused fields */
 @media (pointer: coarse) {
 
 	input:not([type="checkbox"], [type="radio"]),
@@ -1425,7 +1424,7 @@ input[type="checkbox"] {
 	gap: var(--sp-2);
 }
 
-/* Errori: sotto il campo (field-error) o, per l'invio, in un riquadro in fondo al form (form-error) */
+/* Errors: under a field (.field-error) or for the whole form (.form-error) */
 .field-error,
 .form-error {
 	display: flex;
@@ -1471,7 +1470,7 @@ fieldset:has(.field-error) .invitee-list {
 	border-color: var(--no);
 }
 
-/* Allineati in alto: un errore sotto un campo non sposta il pulsante */
+/* Top-aligned, so an error under a field doesn't move the button */
 .add-form {
 	display: grid;
 	grid-template-columns: 1fr 1fr auto;
@@ -1589,7 +1588,7 @@ fieldset:has(.field-error) .invitee-list {
 	grid-column: 1 / -1;
 }
 
-/* ── Pagine: login, account, admin ─────────────────────────────────────── */
+/* ── Pages: login, account, admin ──────────────────────────────────────── */
 
 .auth {
 	display: grid;
@@ -1639,7 +1638,7 @@ fieldset:has(.field-error) .invitee-list {
 	padding: var(--sp-3) var(--sp-4);
 }
 
-/* Lo switch resta a sinistra, le icone a destra (anche quando la riga va a capo su mobile) */
+/* Switch on the left, icons on the right, even when the row wraps */
 .user-row .switch {
 	margin-right: var(--sp-2);
 }
@@ -1665,7 +1664,7 @@ code {
 	overflow-wrap: anywhere;
 }
 
-/* ── Stati: vuoto, caricamento ─────────────────────────────────────────── */
+/* ── Empty and loading states ──────────────────────────────────────────── */
 
 .empty {
 	display: flex;
@@ -1737,7 +1736,7 @@ code {
 	height: 112px;
 }
 
-/* ── Toast e dialog ────────────────────────────────────────────────────── */
+/* ── Toast and dialog ──────────────────────────────────────────────────── */
 
 #toast {
 	position: fixed;
@@ -1809,7 +1808,7 @@ dialog::backdrop {
 	align-self: flex-start;
 }
 
-/* ── Pubblico, invitati, calendario ────────────────────────────────────── */
+/* ── Audience, invitees, calendar ──────────────────────────────────────── */
 
 .link {
 	padding: 0;
@@ -1898,7 +1897,7 @@ fieldset.field>legend {
 	height: 16px;
 }
 
-/* Elenco invitati visibile solo con "Solo invitati" (nessun JavaScript necessario) */
+/* The invitee list shows only while "invited only" is selected */
 .audience-hint-all {
 	margin-top: var(--sp-2);
 }
@@ -2014,7 +2013,7 @@ fieldset.field>legend {
 	margin: 0;
 }
 
-/* ── Condivisione ──────────────────────────────────────────────────────── */
+/* ── Share ─────────────────────────────────────────────────────────────── */
 
 .share-preview {
 	display: flex;
@@ -2100,7 +2099,7 @@ fieldset.field>legend {
 	margin-top: var(--sp-2);
 }
 
-/* ── Animazioni ────────────────────────────────────────────────────────── */
+/* ── Animations ────────────────────────────────────────────────────────── */
 
 @keyframes pop {
 	from {
@@ -2156,7 +2155,7 @@ fieldset.field>legend {
 		margin-bottom: var(--sp-5);
 	}
 
-	/* "Nuovo evento" diventa un pulsante flottante */
+	/* "New event" becomes a floating button */
 	.fab {
 		position: fixed;
 		right: var(--sp-4);
@@ -2195,7 +2194,7 @@ fieldset.field>legend {
 		font-size: var(--fs-xl);
 	}
 
-	/* Azioni dell'evento in griglia 2×N: se sono dispari l'ultima occupa tutta la riga */
+	/* Event actions in a two-column grid; an odd last one spans the row */
 	.hero-actions {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2205,7 +2204,7 @@ fieldset.field>legend {
 		grid-column: 1 / -1;
 	}
 
-	/* Le azioni vanno a capo sotto il contenuto della riga */
+	/* Row actions wrap below the row content */
 	.proposal,
 	.user-row {
 		flex-wrap: wrap;
@@ -2255,7 +2254,7 @@ fieldset.field>legend {
 		padding: var(--sp-6) var(--sp-5);
 	}
 
-	/* Dialog come bottom sheet */
+	/* The dialog becomes a bottom sheet */
 	dialog {
 		width: 100%;
 		margin: auto 0 0;

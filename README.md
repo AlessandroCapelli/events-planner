@@ -1,115 +1,102 @@
 # Events Planner
 
-Web app minimale per organizzare gli eventi di un gruppo: chi c'è, chi forse, chi no, quante persone si porta dietro, proposte di data e luogo alternativi e la lista delle cose da portare.
+A small web app to plan a group's events: who's in, who might come, how many guests they bring, alternative dates and places to vote on, and a list of things to bring.
 
-- **Frontend**: HTML/CSS/JS vanilla, senza build, pubblicato su GitHub Pages.
-- **Backend**: [Supabase](https://supabase.com) (piano free): Auth, Postgres con Row Level Security, Realtime e due Edge Function (gestione utenti, calendario).
-- **Privacy**: il codice è pubblico, i dati stanno su Supabase e sono leggibili solo dagli utenti loggati, secondo chi può vedere cosa.
-- **Lingue**: italiano (predefinito) e inglese. Tema scuro, ottimizzato per desktop e mobile.
+Static vanilla HTML/CSS/JS on GitHub Pages, no build step. [Supabase](https://supabase.com) (free tier) provides Auth, Postgres with Row Level Security, Realtime and two Edge Functions. The UI is in Italian (default) and English, dark theme only, for desktop and mobile.
 
-## Funzionalità
+![Event list](docs/screenshots/events.png)
 
-|                 |                                                                                                                                           |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Accesso         | Gli account li crea solo l'admin: non c'è registrazione pubblica.                                                                         |
-| Eventi          | Lista dei prossimi eventi raggruppati per giorno, creazione e dettaglio. Si può creare anche un evento che inizia adesso.                 |
-| Form            | Validazione uniforme: errore sotto il campo, messaggi tradotti e comprensibili, errori di invio in un unico riquadro in fondo al form.    |
-| Invitati        | Un evento è per _tutto il gruppo_ oppure _solo per gli invitati_ scelti dall'organizzatore: gli altri non lo vedono affatto.              |
-| Archivio        | 12 ore dopo l'inizio un evento è concluso: resta in lista sotto i futuri, in sola lettura (solo un admin può eliminarlo).                 |
-| Tempo reale     | Risposte, voti, proposte e cose da portare si aggiornano da sole, senza perdere quello che si sta scrivendo.                              |
-| Presenza        | _Ci sono / Forse / Non ci sono_, più il numero di accompagnatori; elenco di chi deve ancora rispondere.                                   |
-| Proposte        | Data e/o luogo alternativi con voto 👍/👎. Il creatore o un admin può adottarne una: l'evento si aggiorna e le risposte vengono azzerate. |
-| Cose da portare | Lista condivisa; ognuno prenota quello che porta.                                                                                         |
-| Condividi       | Anteprima dell'evento e invio via WhatsApp, Telegram, email o condivisione di sistema; link da copiare.                                   |
-| Calendario      | Export `.ics` del singolo evento, oppure calendario sincronizzato personale (Google, Apple, Outlook) con tutti gli eventi che vedi.       |
-| Permessi        | Un evento aperto lo modificano o eliminano solo il suo creatore e gli admin.                                                              |
-| Admin           | Crea ed elimina utenti, reimposta password, assegna il ruolo admin. Gli admin vedono anche gli eventi su invito.                          |
+![Event page](docs/screenshots/event.png)
 
-## Struttura
+<p align="center">
+  <img src="docs/screenshots/mobile-events.png" width="300" alt="Event list on mobile">
+  <img src="docs/screenshots/mobile-event.png" width="300" alt="Event page on mobile">
+</p>
+
+## Features
+
+- **Invite-only accounts**: users are created by an admin, there is no public sign-up.
+- **RSVP**: _I'm in / Maybe / Can't make it_, plus guests, and a list of who hasn't replied yet.
+- **Audience**: an event is for the whole group or only for the people its organizer invites; nobody else can see it.
+- **Proposals**: suggest another date or place and vote on it. The organizer or an admin can adopt a proposal, which updates the event and clears the responses.
+- **Things to bring**: a shared list where everyone claims what they'll bring.
+- **Archive**: 12 hours after it starts an event becomes read-only and moves to the _Past_ section.
+- **Real time**: changes from others show up instantly, without losing what you are typing.
+- **Sharing**: WhatsApp, Telegram, email, the system share sheet or a link to copy.
+- **Calendar**: download a single event as `.ics`, or subscribe to a personal feed with every event you can see (Google, Apple, Outlook).
+- **Admin**: create and delete users, reset passwords, grant the admin role.
+
+## Structure
 
 ```
-web/                         sito statico (GitHub Pages)
-  index.html  style.css  favicon.svg  config.example.js
-  js/app.js                  router e viste
-  js/api.js                  accesso a Supabase
-  js/i18n.js                 traduzioni it/en e formattazione date
-  js/ui.js                   template html con escape, dialog, toast, icone
+web/                          static site (GitHub Pages)
+  js/app.js                   router and views
+  js/api.js                   Supabase access
+  js/i18n.js                  translations and date formatting
+  js/ui.js                    escaped html templates, forms, dialogs, icons
 supabase/
-  migrations/                schema, RLS e funzioni (da eseguire in ordine)
-  functions/admin-users/     gestione utenti (solo admin)
-  functions/calendar/        feed iCalendar personale (link segreto)
-.github/workflows/pages.yml  deploy su GitHub Pages
+  migrations/                 schema, RLS and functions, applied in order
+  functions/admin-users/      user management (admins only)
+  functions/calendar/         personal iCalendar feed
+.github/workflows/pages.yml   GitHub Pages deployment
 ```
 
 ## Setup
 
-### 1. Supabase
+### Supabase
 
-1. Crea un progetto su [supabase.com](https://supabase.com).
-2. **SQL Editor**: esegui, in ordine, i file in `supabase/migrations/`. In alternativa, con la CLI: `supabase link --project-ref <ref>`, poi `supabase db push`.
-3. **Authentication → Sign In / Providers**: disattiva _Allow new users to sign up_ e _Allow anonymous sign-ins_.
-4. **Authentication → Providers → Email**: imposta _Minimum password length_ a 8.
-5. Pubblica le Edge Function, dalla dashboard (**Edge Functions → Deploy a new function**) oppure con la CLI:
-    - `admin-users`, con _Verify JWT_ **attivo**: il gateway verifica il JWT; l'handler verifica inoltre l'utente con `auth.getUser()` e il ruolo admin nel database;
-    - `calendar`, con _Verify JWT_ **disattivato**: i calendari non possono autenticarsi, la protezione è il token segreto nel link.
+1. Create a project on [supabase.com](https://supabase.com).
+2. Run the files in `supabase/migrations/` in order in the **SQL Editor**, or with the CLI: `supabase link --project-ref <ref>` and `supabase db push`.
+3. In **Authentication → Sign In / Providers**, turn off _Allow new users to sign up_ and _Allow anonymous sign-ins_, and set the email _Minimum password length_ to 8.
+4. Deploy the Edge Functions, from the dashboard (**Edge Functions → Deploy a new function**, pasting `supabase/functions/<name>/index.ts`) or with the CLI:
 
     ```sh
     npx supabase functions deploy admin-users --project-ref <ref>
     npx supabase functions deploy calendar --no-verify-jwt --project-ref <ref>
     ```
 
-    Nell'editor della dashboard incolla il contenuto del rispettivo `supabase/functions/<nome>/index.ts`. I file `.sql` vanno nel **SQL Editor**, non nell'editor delle Edge Function.
+    `admin-users` keeps _Verify JWT_ on. `calendar` must have it **off**: calendar apps can't log in, so the secret token in the feed URL is the credential.
 
-    In **Edge Functions → Secrets**, aggiungi facoltativamente `APP_URL` con l'URL pubblico dell'app (es. `https://utente.github.io/events-planner/`): aggiunge agli eventi del calendario il link all'app. `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` sono già forniti da Supabase alle funzioni; la service role non va inserita nel frontend né nelle variabili GitHub Pages. Il token personale del calendario viene generato dall'app e non va configurato come secret.
+    Optionally add the `APP_URL` secret (e.g. `https://you.github.io/events-planner/`) to link calendar entries back to the app.
 
-6. Crea il primo utente da **Authentication → Users → Add user** (con _Auto Confirm User_) e rendilo admin:
+5. Create the first user in **Authentication → Users → Add user** (with _Auto Confirm User_) and make them admin:
+
     ```sql
     update public.profiles set is_admin = true
-    where id = (select id from auth.users where email = 'tu@example.com');
+    where id = (select id from auth.users where email = 'you@example.com');
     ```
 
-### 2. GitHub Pages
+### GitHub Pages
 
-1. **Settings → Secrets and variables → Actions → Variables** (non _Secrets_):
-    - `SUPABASE_URL`: `https://<ref>.supabase.co`
-    - `SUPABASE_ANON_KEY`: la _publishable_ key (`sb_publishable_…`), pubblica per design
-2. **Settings → Pages → Source**: _GitHub Actions_.
-3. Fai push su `main`: il workflow genera `config.js` e pubblica `web/`.
-4. In Supabase, **Authentication → URL Configuration → Site URL**: imposta l'URL di Pages.
+1. In **Settings → Secrets and variables → Actions → Variables** (not _Secrets_), add `SUPABASE_URL` (`https://<ref>.supabase.co`) and `SUPABASE_ANON_KEY` (the `sb_publishable_…` key, public by design).
+2. In **Settings → Pages**, set the source to _GitHub Actions_.
+3. Push to `main`: the workflow generates `config.js` and publishes `web/`.
+4. In Supabase, set **Authentication → URL Configuration → Site URL** to the Pages URL.
 
-### Avvio locale
+### Local development
 
 ```sh
-cp web/config.example.js web/config.js   # inserisci URL e chiave
+cp web/config.example.js web/config.js   # fill in URL and key
 npx serve web
 ```
 
-### Calendario in Outlook
+## Calendar sync
 
-- **File scaricato:** in Outlook sul web / nuovo Outlook, apri Calendario → Aggiungi calendario → Carica da file e seleziona il file `.ics`. L'importazione non si aggiorna automaticamente.
-- **Sincronizzazione:** nell'account dell'app premi Outlook e copia il link **HTTPS**. In Outlook scegli Calendario → Aggiungi calendario → Abbonati dal Web e incollalo. Il collegamento Apple usa invece `webcal:`.
-- La funzione `calendar` deve avere **Verify JWT disattivato** anche quando è pubblicata dalla dashboard. Il token personale nel link protegge il feed; il client calendario non invia un header Authorization. `supabase/config.toml` conserva questa impostazione per i deploy CLI.
-- Se Outlook rifiuta il link, aprilo in una finestra privata: deve restituire un calendario che inizia con `BEGIN:VCALENDAR`. Un errore 401 con `Missing authorization header` indica che Verify JWT è ancora attivo; un 404 può indicare un token non valido o una funzione non pubblicata. Dopo la disattivazione del controllo JWT, un token fittizio deve ricevere 404, non 401.
-- Gli aggiornamenti sono gestiti da Outlook e possono richiedere più di 24 ore.
-- Il feed legge i dati correnti a ogni richiesta: include eventi nuovi visibili, esclude quelli con risposta “Non ci sono” e li reinserisce quando rispondi “Ci sono” o “Forse”. Anche gli eventi ancora senza risposta restano inclusi. Un file `.ics` importato è invece una copia indipendente e non viene aggiornato né rimosso automaticamente.
+The personal feed is read live on every request: it includes every event you can see, except the ones you declined. Calendar apps poll it on their own schedule, which for Outlook can take over a day. A downloaded `.ics` file is a one-off copy and never updates.
 
-### Campi e aggiornamenti in tempo reale
+In Outlook, use **Add calendar → Subscribe from web** with the HTTPS link from the account page; Apple Calendar uses the `webcal:` link. If the link is rejected, open it in a private window: it should return a document starting with `BEGIN:VCALENDAR`. A `401 Missing authorization header` means _Verify JWT_ is still on for `calendar`, and a 404 means an invalid token or an undeployed function.
 
-Le cose da portare e le proposte si svuotano dopo un inserimento riuscito; la password si svuota dopo il cambio riuscito. Creare un utente pulisce nome/email e prepara una nuova password iniziale. Nome profilo e form di modifica mantengono i valori salvati. Gli errori conservano i dati inseriti.
+## Security
 
-Se scrivi una nuova bozza mentre un invio è ancora in corso, la risposta del server non la cancella. I refresh mantengono le bozze degli altri form e applicano comunque le modifiche degli altri utenti, anche quando un invio locale fallisce. Un errore nel refresh successivo a un salvataggio non fa apparire l'inserimento come fallito e non impedisce la pulizia del campo.
+- RLS is on for every table, and the `anon` role has no privileges. Clients can only update specific columns, never `is_admin` or `created_by`.
+- Visibility is defined once, in `event_visible_to()`: group events are visible to everyone, invite-only events to their organizer, invitees and admins. RLS, Realtime and the calendar feed all use it.
+- Events and invitees are written only through `save_event()`, which checks permissions and dates. People removed from the invitees also lose their responses, votes and claims.
+- Realtime sends deletions to every subscriber with their primary key, so invitations, responses and votes use random surrogate keys that reveal nothing about private events.
+- The app also refreshes every 5 minutes while visible, to catch revocations that Realtime cannot deliver.
+- Each calendar token has 244 random bits, readable only by its owner; rotating it disables the old link at once.
+- The service role key lives only in the Edge Functions, never in the frontend or the repository.
+- All of this relies on admins being the only ones who can create accounts, so keep sign-ups and anonymous sign-ins disabled.
 
-## Sicurezza
-
-- Ogni tabella ha la RLS attiva; il ruolo `anon` non ha alcun permesso.
-- **Chi vede cosa** è deciso in un solo punto, `event_visible_to()`: eventi di gruppo per tutti, eventi su invito per organizzatore, invitati e admin. RLS e calendario applicano questa regola. Il frontend rivalida profilo e vista anche ogni 30 secondi quando visibile, per rilevare revoche che Realtime non può notificare al destinatario escluso.
-- Eventi e invitati si scrivono solo tramite `save_event()`, che verifica permessi e date (un evento si crea o modifica finché è aperto, cioè iniziato da meno di 12 ore) e risponde con codici che l'app traduce; chi viene tolto dagli invitati perde anche risposte, voti e prenotazioni.
-- Realtime non applica la RLS alle cancellazioni e ne invia la chiave primaria a tutti: per questo inviti, risposte e voti hanno chiavi surrogate casuali, che non rivelano chi era invitato a un evento privato.
-- Le sottoscrizioni filtrate separano INSERT/UPDATE da DELETE: le cancellazioni invalidano la vista senza richiedere `REPLICA IDENTITY FULL` o diffondere le colonne della riga cancellata. Le liste, i dettagli e il feed leggono tutte le pagine, anche con un limite Data API inferiore a 1.000 righe.
-- Il calendario usa un token casuale (244 bit) per utente, leggibile solo dal proprietario; rigenerarlo invalida subito il vecchio link. Il feed è generato con la service role solo dalla Edge Function.
-- Il client può aggiornare solo colonne specifiche: non può toccare `is_admin` né `created_by`.
-- Tutto dipende dal fatto che solo l'admin possa creare account: tieni disattivate registrazione e accesso anonimo (passo 3 del setup).
-
-## Licenza
+## License
 
 [MIT](LICENSE)

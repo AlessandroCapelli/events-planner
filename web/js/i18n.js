@@ -1,3 +1,4 @@
+/** UI strings by language; `{name}` placeholders are filled by `t()`. */
 const dict = {
 	it: {
 		"nav.admin": "Utenti",
@@ -463,6 +464,7 @@ const dict = {
 
 const STORAGE_KEY = "lang";
 
+/** Language saved by a previous visit, if storage is available and holds a known one. */
 function stored() {
 	try {
 		const value = localStorage.getItem(STORAGE_KEY);
@@ -475,54 +477,59 @@ function stored() {
 let current = stored() ?? "it";
 document.documentElement.lang = current;
 
+/** Current UI language code. */
 export const lang = () => current;
 
+/** Switches the UI language and remembers it for the next visit. */
 export function setLang(value) {
 	current = value;
 	document.documentElement.lang = value;
 	try {
 		localStorage.setItem(STORAGE_KEY, value);
 	} catch {
-		/* storage non disponibile */
+		/* the choice just isn't remembered */
 	}
 }
 
+/** Translates `key`, replacing `{name}` placeholders with `vars`; unknown keys are returned as is. */
 export const t = (key, vars = {}) =>
 	(dict[current][key] ?? key).replace(
 		/\{(\w+)\}/g,
 		(_, name) => vars[name] ?? "",
 	);
 
-/** Traduzione con plurale: usa le chiavi `<key>.one` / `<key>.other`. */
+/** Plural-aware `t()`: picks `<key>.one` or `<key>.other` for `n`, available as `{n}`. */
 export const tn = (key, n, vars = {}) =>
 	t(
 		`${key}.${new Intl.PluralRules(current).select(n) === "one" ? "one" : "other"}`,
 		{ n, ...vars },
 	);
 
-// ── Date ─────────────────────────────────────────────────────────────────
-
 const fmt = (options) => new Intl.DateTimeFormat(current, options);
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-/** Giorni di calendario tra oggi e la data (0 = oggi, 1 = domani, -1 = ieri). */
+/** Calendar days from today to `date`: 0 today, 1 tomorrow, -1 yesterday. */
 const dayDiff = (date) =>
 	Math.round((startOfDay(date) - startOfDay(new Date())) / 864e5);
 const yearIfOther = (date) =>
 	date.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {};
 
-/** Ore dopo l'inizio in cui un evento resta aperto: deve coincidere con public.is_open() nel database. */
+/** Hours an event stays open after it starts; must match `public.is_open()`. */
 const OPEN_HOURS = 12;
 
-/** Istante prima del quale un evento è concluso (sola lettura). */
+/** ISO instant before which an event has ended and become read-only. */
 export const openSince = () =>
 	new Date(Date.now() - OPEN_HOURS * 36e5).toISOString();
+/** Whether the event has ended. */
 export const isPast = (iso) => new Date(iso) <= new Date(openSince());
+/** Whether the event has started but not ended yet. */
 export const isLive = (iso) => !isPast(iso) && new Date(iso) <= new Date();
 
+/** Time of day, e.g. "18:30". */
 export const fmtTime = (iso) =>
 	fmt({ hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
+/** Short date and time, with the year only when it isn't the current one. */
 export function fmtDate(iso) {
 	const date = new Date(iso);
 	return fmt({
@@ -535,6 +542,7 @@ export function fmtDate(iso) {
 	}).format(date);
 }
 
+/** Full date without time, e.g. "Saturday 24 October". */
 export function fmtLongDate(iso) {
 	const date = new Date(iso);
 	return capitalize(
@@ -547,7 +555,7 @@ export function fmtLongDate(iso) {
 	);
 }
 
-/** Parti per il riquadro data: mese e giorno della settimana abbreviati, numero del giorno. */
+/** Short month, day number and short weekday, for the date tile. */
 export function dayParts(iso) {
 	const date = new Date(iso);
 	return {
@@ -557,7 +565,7 @@ export function dayParts(iso) {
 	};
 }
 
-/** Intestazione del gruppo nella lista: Oggi, Domani, oppure mese e anno (sempre per i conclusi). */
+/** List group heading: today, tomorrow or yesterday, otherwise month and year (always for past events). */
 export function groupLabel(iso) {
 	const date = new Date(iso);
 	if (!isPast(iso)) {
@@ -569,7 +577,7 @@ export function groupLabel(iso) {
 	return capitalize(fmt({ month: "long", year: "numeric" }).format(date));
 }
 
-/** "tra 2 ore", "domani", "3 giorni fa"… oppure "In corso" se iniziato da meno di 12 ore. */
+/** Relative time such as "in 2 hours" or "3 days ago", or "live" while the event is open and started. */
 export function relative(iso) {
 	if (isLive(iso)) return t("date.live");
 	const date = new Date(iso);

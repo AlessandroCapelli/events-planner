@@ -1,6 +1,3 @@
-// Feed iCalendar personale: GET /functions/v1/calendar?token=…&lang=it&tz=Europe/Rome
-// Pubblica, senza login (i calendari non sanno autenticarsi): la protezione è il token segreto.
-// Va pubblicata con "Verify JWT" disattivato. Contiene solo gli eventi che il proprietario del token vede.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 type FeedEvent = {
@@ -17,15 +14,16 @@ const TEXT = {
 	en: { name: 'Events Planner', time: 'Date and time', reply: 'Your reply', none: "You haven't replied yet", yes: "I'm in", maybe: 'Maybe', no: "Can't make it", open: 'Open' },
 };
 
+/** Escapes a value for an iCalendar TEXT property. */
 const escape = (value: string) => value.replace(/[\\;,]/g, '\\$&').replace(/\r\n|\r|\n/g, '\\n');
 
-/** Spezza le righe oltre i 75 byte (RFC 5545 §3.1) senza tagliare caratteri multibyte. */
+/** Folds a content line at 75 octets (RFC 5545 §3.1) without splitting multibyte characters. */
 function fold(line: string): string {
 	const encoder = new TextEncoder();
 	const parts: string[] = [];
 	let current = '';
 	for (const char of line) {
-		const limit = parts.length ? 74 : 75; // le righe di continuazione iniziano con uno spazio
+		const limit = parts.length ? 74 : 75;
 		if (encoder.encode(current + char).length > limit) {
 			parts.push(current);
 			current = char;
@@ -35,7 +33,7 @@ function fold(line: string): string {
 	return parts.join('\r\n ');
 }
 
-/** Data locale (YYYYMMDD) dell'istante nel fuso indicato, più `days` giorni. */
+/** Local date (YYYYMMDD) of an instant in `timeZone`, shifted by `days`. */
 function localDay(iso: string, timeZone: string, days = 0): string {
 	const parts = new Intl.DateTimeFormat('en', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
 		.formatToParts(new Date(iso));
@@ -43,6 +41,7 @@ function localDay(iso: string, timeZone: string, days = 0): string {
 	return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + days)).toISOString().slice(0, 10).replaceAll('-', '');
 }
 
+/** Builds the iCalendar document, with every event as an all-day entry in `timeZone`. */
 export function buildCalendar(
 	events: FeedEvent[],
 	{ lang = 'it', timeZone = 'Europe/Rome', appUrl = '' }: { lang?: 'it' | 'en'; timeZone?: string; appUrl?: string } = {},
@@ -95,11 +94,12 @@ export function buildCalendar(
 	return lines.map(fold).join('\r\n') + '\r\n';
 }
 
+/** Returns `value` if it is a valid IANA time zone, otherwise the default one. */
 function validTimeZone(value: string | null): string {
 	try {
 		if (value) return new Intl.DateTimeFormat('en', { timeZone: value }).resolvedOptions().timeZone;
 	} catch {
-		// fuso non valido: si usa quello predefinito
+		/* falls back to the default time zone */
 	}
 	return 'Europe/Rome';
 }
@@ -108,6 +108,11 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 	auth: { persistSession: false },
 });
 
+/**
+ * Personal iCalendar feed: `GET /functions/v1/calendar?token=…&lang=it&tz=Europe/Rome`.
+ * Calendar apps cannot log in, so the secret token in the URL is the only credential;
+ * the feed holds exactly the events its owner can see. Deploy with JWT verification off.
+ */
 Deno.serve(async (req) => {
 	const url = new URL(req.url);
 	const token = url.searchParams.get('token') ?? '';

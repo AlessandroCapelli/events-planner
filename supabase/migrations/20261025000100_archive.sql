@@ -1,6 +1,6 @@
--- Archivio: gli eventi conclusi (12 ore dopo l'inizio) restano visibili ma in sola lettura.
--- Prima la RLS li nascondeva; ora ogni scrittura verifica esplicitamente che l'evento sia aperto.
--- Un evento concluso può eliminarlo solo un admin.
+-- Archive: past events (12 hours after they start) stay visible but read-only.
+-- Reads no longer filter on is_open(); every write checks it explicitly instead.
+-- Only an admin can delete a past event.
 
 create function public.event_is_open(eid uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
