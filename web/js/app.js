@@ -116,7 +116,7 @@ const routes = [
 	},
 	{ path: new RegExp(`^/event/${UUID}/edit$`), view: viewEventForm },
 	{ path: /^\/account$/, view: viewAccount },
-	{ path: /^\/admin$/, view: viewAdmin, live: () => [["profiles"], ["groups"], ["memberships"]] },
+	{ path: /^\/admin$/, view: viewAdmin, title: "admin.title", live: () => [["profiles"], ["groups"], ["memberships"]] },
 ];
 
 /**
@@ -220,6 +220,7 @@ function nextRefreshDelay() {
 
 /** Renders the page for the current hash and starts its live updates. */
 async function render() {
+	document.title = "Events Planner";
 	++pageVersion;
 	++seq;
 	stopLive();
@@ -234,6 +235,7 @@ async function render() {
 	const path = location.hash.slice(1) || "/";
 	const route = routes.find((r) => r.path.test(path));
 	if (!route) return void (location.hash = "#/");
+	if (route.title) document.title = `${t(route.title)} · Events Planner`;
 	const args = path.match(route.path).slice(1);
 
 	app.innerHTML = skeleton();
@@ -262,7 +264,7 @@ function renderNav() {
 							</div>
 						</div>
 						<a class="menu-item" href="#/account">${icon("user")}${t("nav.account")}</a>
-						${me.is_admin && html`<a class="menu-item" href="#/admin">${icon("users")}${t("nav.admin")}</a>`}
+						${me.is_admin && html`<a class="menu-item" href="#/admin">${icon("shield")}${t("nav.admin")}</a>`}
 						<button class="menu-item" data-action="lang">${icon("globe")}${t("nav.switchLang")}</button>
 						<button class="menu-item danger" data-action="logout">${icon("logout")}${t("nav.logout")}</button>
 					</div>
@@ -1367,7 +1369,7 @@ async function viewAccount() {
 	];
 }
 
-/** User management, for admins only. */
+/** User and group administration, for admins only. */
 async function viewAdmin() {
 	const current = pageScope();
 	const reload = refreshView(viewAdmin);
