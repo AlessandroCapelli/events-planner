@@ -105,7 +105,7 @@ test("the current user's name and role update without signing in again", async (
 	await expect(edit).toHaveCount(0);
 	await page.locator(".menu-trigger").click();
 	await expect(page.locator(".menu-head")).toContainText("New name");
-	await expect(page.locator(".menu-panel").getByRole("link", { name: "Users" })).toHaveCount(0);
+	await expect(page.locator(".menu-panel").getByRole("link", { name: "Administration" })).toHaveCount(0);
 });
 
 test("the safety refresh removes an event that is no longer visible", async ({ page }) => {

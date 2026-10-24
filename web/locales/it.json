@@ -1,5 +1,5 @@
 {
-	"nav.admin": "Utenti",
+	"nav.admin": "Amministrazione",
 	"nav.account": "Il mio account",
 	"nav.menu": "Impostazioni",
 	"nav.switchLang": "English",
@@ -167,7 +167,7 @@
 	"account.passwordConfirm": "Conferma password",
 	"account.changePassword": "Cambia password",
 	"account.passwordChanged": "Password aggiornata.",
-	"admin.title": "Utenti",
+	"admin.title": "Amministrazione",
 	"admin.count.one": "{n} utente",
 	"admin.count.other": "{n} utenti",
 	"admin.create": "Aggiungi un membro",
