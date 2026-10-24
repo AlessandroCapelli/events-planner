@@ -259,5 +259,7 @@
 	"polls.multipleHint": "Più scelte",
 	"polls.voters.one": "{n} votante",
 	"polls.voters.other": "{n} votanti",
-	"polls.confirmDelete": "Eliminare il sondaggio?"
+	"polls.confirmDelete": "Eliminare il sondaggio?",
+	"admin.usersHint.one": "{n} persona può accedere all'app.",
+	"admin.usersHint.other": "{n} persone possono accedere all'app."
 }

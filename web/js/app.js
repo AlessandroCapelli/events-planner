@@ -1505,12 +1505,58 @@ async function viewAdmin() {
 		html`<div class="page-narrow page-admin">
 			${backLink("#/", t("event.back"))} ${pageHead("shield", t("admin.title"), t("admin.subtitle"))}
 			<div class="admin-layout">
-				<section class="admin-users" aria-labelledby="admin-users-title">
-					<h2 class="section-title" id="admin-users-title">
-						${icon("users")}${t("admin.users")}<span class="section-count">${users.length}</span>
-					</h2>
-
-					<details class="card disclosure">
+				<section class="card panel admin-users">
+					${cardHead("users", t("admin.users"), tn("admin.usersHint", users.length))}
+					<ul class="rows">
+						${users.map(
+							(u) =>
+								html`<li class="row user-row">
+									${avatar(u.display_name, u.id, "lg")}
+									<div class="grow">
+										<strong>${u.display_name ?? "—"}</strong>
+										${u.id === me.id && html`<span class="muted">(${t("common.you")})</span>`}
+										<div class="muted small truncate">${u.email}</div>
+										<div class="muted small truncate">${groupNames(u.id)}</div>
+									</div>
+									<div class="row-actions">
+										<label class="switch">
+											<input
+												type="checkbox"
+												data-action="toggleAdmin"
+												data-id="${u.id}"
+												${u.is_admin && "checked"}
+												${u.id === me.id && "disabled"}
+											/>
+											<span>${t("admin.isAdmin")}</span>
+										</label>
+										<button
+											class="btn-icon"
+											data-action="editGroups"
+											data-id="${u.id}"
+											data-name="${u.display_name}"
+											title="${t("groups.edit")}"
+											aria-label="${t("groups.edit")}"
+										>
+											${icon("layers")}
+										</button>
+										<button
+											class="btn-icon"
+											data-action="resetPassword"
+											data-id="${u.id}"
+											data-name="${u.display_name}"
+											title="${t("admin.resetPassword")}"
+											aria-label="${t("admin.resetPassword")}"
+										>
+											${icon("key")}
+										</button>
+										${u.id === me.id
+											? html`<span class="btn-icon" aria-hidden="true"></span>`
+											: deleteButton("deleteUser", u.id, u.display_name)}
+									</div>
+								</li>`,
+						)}
+					</ul>
+					<details class="disclosure admin-create">
 						<summary>${icon("userPlus")}<span>${t("admin.create")}</span>${icon("chevronDown", "chev")}</summary>
 						<form class="disclosure-body" data-submit="create" data-reset-on-success autocomplete="off">
 							<div class="field-grid">
@@ -1560,56 +1606,6 @@ async function viewAdmin() {
 							</div>
 						</form>
 					</details>
-
-					<ul class="user-list">
-						${users.map(
-							(u) =>
-								html`<li class="card user-row">
-									${avatar(u.display_name, u.id, "lg")}
-									<div class="grow">
-										<strong>${u.display_name ?? "—"}</strong>
-										${u.id === me.id && html`<span class="muted">(${t("common.you")})</span>`}
-										<div class="muted small truncate">${u.email}</div>
-										<div class="muted small truncate">${groupNames(u.id)}</div>
-									</div>
-									<div class="row-actions">
-										<label class="switch">
-											<input
-												type="checkbox"
-												data-action="toggleAdmin"
-												data-id="${u.id}"
-												${u.is_admin && "checked"}
-												${u.id === me.id && "disabled"}
-											/>
-											<span>${t("admin.isAdmin")}</span>
-										</label>
-										<button
-											class="btn-icon"
-											data-action="editGroups"
-											data-id="${u.id}"
-											data-name="${u.display_name}"
-											title="${t("groups.edit")}"
-											aria-label="${t("groups.edit")}"
-										>
-											${icon("layers")}
-										</button>
-										<button
-											class="btn-icon"
-											data-action="resetPassword"
-											data-id="${u.id}"
-											data-name="${u.display_name}"
-											title="${t("admin.resetPassword")}"
-											aria-label="${t("admin.resetPassword")}"
-										>
-											${icon("key")}
-										</button>
-										${u.id === me.id
-											? html`<span class="btn-icon" aria-hidden="true"></span>`
-											: deleteButton("deleteUser", u.id, u.display_name)}
-									</div>
-								</li>`,
-						)}
-					</ul>
 				</section>
 				<section class="card panel admin-groups">
 					${cardHead("layers", t("groups.title"), t("groups.manageHint"))}

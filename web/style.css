@@ -1155,8 +1155,7 @@ button {
 
 /* minmax(0, 1fr) stops the column from growing to fit the longest name */
 .rows,
-.people,
-.user-list {
+.people {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	gap: var(--sp-2);
@@ -1605,26 +1604,24 @@ fieldset:has(.field-error) .invitee-list {
 	font-size: var(--fs-lg);
 }
 
-.card.user-row {
-	display: flex;
-	align-items: center;
-	gap: var(--sp-3);
-	padding: var(--sp-3) var(--sp-4);
-}
-
-.admin-layout,
-.admin-users {
+.admin-layout {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	gap: var(--sp-4);
-}
-
-.admin-layout {
 	gap: var(--sp-6);
 }
 
-.admin-users .section-title {
-	margin-bottom: 0;
+/* "Add a member" closes the users card, like the form that closes the groups card */
+.admin-create {
+	padding-top: var(--sp-4);
+	border-top: 1px solid var(--border);
+}
+
+.admin-create > summary {
+	padding: var(--sp-2) 0;
+}
+
+.admin-create .disclosure-body {
+	padding: var(--sp-3) 0 0;
 }
 
 .user-row .grow > strong {

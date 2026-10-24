@@ -259,5 +259,7 @@
 	"polls.multipleHint": "Several choices",
 	"polls.voters.one": "{n} voter",
 	"polls.voters.other": "{n} voters",
-	"polls.confirmDelete": "Delete the poll?"
+	"polls.confirmDelete": "Delete the poll?",
+	"admin.usersHint.one": "{n} person can sign in to the app.",
+	"admin.usersHint.other": "{n} people can sign in to the app."
 }
