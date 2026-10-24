@@ -92,6 +92,8 @@ npm run test:db       # database tests, needs psql and an empty PostgreSQL
 npm run lint          # formatting check (npm run format fixes it)
 ```
 
+Browser checks run headlessly against an in-memory API, without touching Supabase. They cover every page in Italian and English at mobile, tablet and desktop widths and save screenshots under `test-results/`. Set `PLAYWRIGHT_PORT` to use another local port, or `PLAYWRIGHT_CHANNEL=msedge` to use an installed Microsoft Edge.
+
 ## Calendar sync
 
 The personal feed is read live on every request: it includes every event you can see, except the ones you declined. Calendar apps poll it on their own schedule, which for Outlook can take over a day. A downloaded `.ics` file is a one-off copy and never updates.

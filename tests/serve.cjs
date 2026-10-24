@@ -20,4 +20,4 @@ http
 			res.writeHead(200, { "Content-Type": types[path.extname(file)] || "application/octet-stream" }).end(data);
 		});
 	})
-	.listen(4173, "127.0.0.1");
+	.listen(Number(process.env.PLAYWRIGHT_PORT || 4173), "127.0.0.1");

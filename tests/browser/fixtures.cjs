@@ -6,8 +6,9 @@ const mockApi = fs.readFileSync(path.join(__dirname, "mock-api.js"), "utf8");
 
 /** Playwright `test` whose pages run in English against the in-memory API in mock-api.js, never Supabase. */
 const test = base.test.extend({
-	page: async ({ page }, use) => {
-		await page.addInitScript(() => localStorage.setItem("lang", "en"));
+	appLanguage: ["en", { option: true }],
+	page: async ({ page, appLanguage }, use) => {
+		await page.addInitScript((language) => localStorage.setItem("lang", language), appLanguage);
 		await page.route("https://**/*", (route) => route.abort());
 		await page.route("**/config.js", (route) =>
 			route.fulfill({ contentType: "text/javascript", body: "window.CONFIG = {};" }),

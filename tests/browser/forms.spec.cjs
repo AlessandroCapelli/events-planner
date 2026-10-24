@@ -113,11 +113,29 @@ test("creating a user requires at least one group", async ({ page }) => {
 	expect(await page.evaluate(() => window.__mock.lastAdmin)).toBeUndefined();
 });
 
+test("a second group choice made during a refresh updates the invitee list", async ({ page }) => {
+	await page.goto("/#/new");
+	const form = page.locator('form[data-submit="save"]');
+	await form.locator(".segmented label").filter({ hasText: "Invite only" }).click();
+	await page.evaluate(() => {
+		window.__mock.holdGroups = true;
+	});
+	await form.locator('[name="group_id"]').selectOption("climbing");
+	await page.waitForFunction(() => !!window.__mock.releaseGroups);
+	await form.locator('[name="group_id"]').selectOption("default");
+	await page.evaluate(() => {
+		window.__mock.holdGroups = false;
+		window.__mock.releaseGroups();
+	});
+	await expect(form.locator('[name="group_id"]')).toHaveValue("default");
+	await expect(form.locator('[name="invitees"][value="long"]')).toBeVisible();
+});
+
 test("changing an event group preserves the draft and updates its invitees", async ({ page }) => {
 	await page.goto("/#/new");
 	const form = page.locator('form[data-submit="save"]');
 	await form.locator('[name="title"]').fill("Unsent dinner");
-	await form.locator('[name="audience"][value="invited"]').check();
+	await form.locator(".segmented label").filter({ hasText: "Invite only" }).click();
 	await form.locator('[name="invitees"][value="long"]').check();
 	await form.locator('[name="group_id"]').selectOption("climbing");
 	await expect(form.locator('[name="invitees"][value="long"]')).toHaveCount(0);

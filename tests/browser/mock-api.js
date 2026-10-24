@@ -61,7 +61,10 @@ export const listUpcoming = async (since, groupId) =>
 	visibleIn(groupId) && state.event.starts_at > since ? [clone(state.event)] : [];
 export const listPast = async (since, _limit, groupId) =>
 	visibleIn(groupId) && state.event.starts_at <= since ? [clone(state.event)] : [];
-export const listGroups = async () => clone(state.groups);
+export const listGroups = async () => {
+	if (state.holdGroups) await hold("Groups");
+	return clone(state.groups);
+};
 export const saveGroup = async () => "group";
 export const deleteGroup = async () => {};
 export const setUserGroups = async () => {};

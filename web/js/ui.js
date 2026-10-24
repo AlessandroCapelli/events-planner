@@ -343,6 +343,7 @@ export function ask({
 					value="${input.value}"
 					required
 					minlength="${input.minlength ?? 1}"
+					${input.maxlength && html`maxlength="${input.maxlength}"`}
 					autocomplete="off"
 					autocapitalize="off"
 					spellcheck="false"
@@ -421,7 +422,7 @@ export function ask({
 
 /** Icon from the Lucide-style sprite in icons.svg (24×24, stroked). */
 export const icon = (name, cls = "") =>
-	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><use href="icons.svg#${name}"></use></svg>`;
+	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><use href="icons.svg?v=2#${name}"></use></svg>`;
 
 /** Well-separated hues, so different people never get near-identical avatars. */
 const AVATAR_HUES = [0, 28, 48, 142, 172, 196, 220, 258, 290, 325];

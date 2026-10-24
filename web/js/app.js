@@ -96,9 +96,10 @@ const routes = [
 	{
 		path: /^\/$/,
 		view: viewEvents,
+		title: "events.title",
 		live: () => [["events"], ["responses"], ["invitations"], ["profiles"], ["groups"], ["memberships"]],
 	},
-	{ path: /^\/new$/, view: () => viewEventForm() },
+	{ path: /^\/new$/, view: () => viewEventForm(), title: "form.newTitle" },
 	{
 		path: new RegExp(`^/event/${UUID}$`),
 		view: viewEvent,
@@ -114,8 +115,8 @@ const routes = [
 			["memberships"],
 		],
 	},
-	{ path: new RegExp(`^/event/${UUID}/edit$`), view: viewEventForm },
-	{ path: /^\/account$/, view: viewAccount },
+	{ path: new RegExp(`^/event/${UUID}/edit$`), view: viewEventForm, title: "form.editTitle" },
+	{ path: /^\/account$/, view: viewAccount, title: "account.title" },
 	{ path: /^\/admin$/, view: viewAdmin, title: "admin.title", live: () => [["profiles"], ["groups"], ["memberships"]] },
 ];
 
@@ -312,22 +313,21 @@ const skeleton = () =>
 		${[1, 2, 3].map(() => html`<div class="skeleton skeleton-card"></div>`)}
 	</div>`;
 
-const pageHead = (title, subtitle, action) =>
+const pageTitle = (name, title) => html`<h1 class="page-title">${icon(name)}<span>${title}</span></h1>`;
+
+const pageHead = (name, title, subtitle, action) =>
 	html`<header class="page-head">
-		<div>
-			<h1>${title}</h1>
-			${subtitle && html`<p class="muted">${subtitle}</p>`}
-		</div>
+		<div>${pageTitle(name, title)} ${subtitle && html`<p class="muted">${subtitle}</p>`}</div>
 		${action}
 	</header>`;
 
 const backLink = (href, label) => html`<a class="back" href="${href}">${icon("back")}${label}</a>`;
 
-const emptyState = (name, title, text, action) =>
+const emptyState = (name, title, text, action, fullPage = false) =>
 	html`<div class="empty">
-		<div class="empty-icon">${icon(name)}</div>
-		<h2>${title}</h2>
-		${text && html`<p class="muted">${text}</p>`} ${action}
+		${!fullPage && html`<div class="empty-icon">${icon(name)}</div>`}
+		${fullPage ? pageTitle(name, title) : html`<h2>${title}</h2>`} ${text && html`<p class="muted">${text}</p>`}
+		${action}
 	</div>`;
 
 const errorState = (message) =>
@@ -336,6 +336,7 @@ const errorState = (message) =>
 		t("error.title"),
 		message,
 		html`<button class="btn" onclick="location.reload()">${icon("refresh")}${t("common.retry")}</button>`,
+		true,
 	);
 
 const dateTile = (iso, size = "") => {
@@ -554,7 +555,7 @@ function viewLogin() {
 			<form class="card auth-card" data-submit="login">
 				<img class="auth-logo" src="favicon.svg" alt="" width="48" height="48" />
 				<div>
-					<h1>${t("login.title")}</h1>
+					${pageTitle("user", t("login.title"))}
 					<p class="muted">${t("login.subtitle")}</p>
 				</div>
 				<label class="field">
@@ -621,6 +622,7 @@ async function viewEvents() {
 	return [
 		html`<div class="page-narrow">
 			${pageHead(
+				"calendar",
 				t("events.title"),
 				upcoming.length ? tn("events.count", upcoming.length) : t("events.subtitle"),
 				html`<a class="btn btn-primary fab" href="#/new" aria-label="${t("events.new")}"
@@ -720,6 +722,7 @@ async function viewEvent(id) {
 	const current = pageScope();
 	const [event, members, groups] = await Promise.all([api.getEvent(id), api.listProfiles(), api.listGroups()]);
 	if (!current()) return;
+	document.title = `${event?.title ?? t("event.notFound")} · Events Planner`;
 	if (!event) {
 		return [
 			emptyState(
@@ -727,6 +730,7 @@ async function viewEvent(id) {
 				t("event.notFound"),
 				t("event.notFoundHint"),
 				html`<a class="btn" href="#/">${icon("back")}${t("event.back")}</a>`,
+				true,
 			),
 		];
 	}
@@ -867,7 +871,7 @@ async function viewEvent(id) {
 							<div class="hero-title">
 								${isLive(event.starts_at) && html`<span class="pill live">${t("date.live")}</span>`}
 								${closed && html`<span class="pill">${icon("archive")}${t("date.past")}</span>`}
-								<h1>${event.title}</h1>
+								${pageTitle(closed ? "archive" : "calendar", event.title)}
 								<p class="muted small">${t("event.by", { name: event.creator?.display_name ?? "—" })}</p>
 							</div>
 						</div>
@@ -1018,7 +1022,12 @@ async function viewEvent(id) {
 							</h3>
 							<div class="pending-list">
 								${pending.map(
-									(m) => html`<span class="chip">${avatar(m.display_name, m.id, "sm")}${m.display_name}</span>`,
+									(m) =>
+										html`<span class="chip"
+											>${avatar(m.display_name, m.id, "sm")}<span class="truncate" title="${m.display_name}"
+												>${m.display_name}</span
+											></span
+										>`,
 								)}
 							</div>
 						</div>`}
@@ -1104,7 +1113,11 @@ async function viewEventForm(id) {
 	return [
 		html`<div class="page-narrow">
 			${backLink(back, t(id ? "event.backToEvent" : "event.back"))}
-			${pageHead(t(id ? "form.editTitle" : "form.newTitle"), t(id ? "form.editSubtitle" : "form.newSubtitle"))}
+			${pageHead(
+				id ? "edit" : "plus",
+				t(id ? "form.editTitle" : "form.newTitle"),
+				t(id ? "form.editSubtitle" : "form.newSubtitle"),
+			)}
 			<form class="card panel" data-submit="save">
 				<label class="field">
 					<span>${t("form.title")}</span>
@@ -1205,9 +1218,11 @@ ${event?.description}</textarea
 		{
 			selectAll: (_, el) => setInvitees(el.form, true),
 			selectNone: (_, el) => setInvitees(el.form, false),
-			pickGroup: (_, el) => {
-				draftGroup = el.value;
-				return reload();
+			pickGroup: async (_, el) => {
+				do {
+					draftGroup = el.value;
+					await reload();
+				} while (current() && el.isConnected && el.value !== draftGroup);
 			},
 			save: async (values, form) => {
 				const invitees = new FormData(form).getAll("invitees");
@@ -1281,7 +1296,7 @@ async function viewAccount() {
 
 	return [
 		html`<div class="page-narrow">
-			${backLink("#/", t("event.back"))} ${pageHead(t("account.title"), t("account.subtitle"))}
+			${backLink("#/", t("event.back"))} ${pageHead("user", t("account.title"), t("account.subtitle"))}
 			<section class="card profile-card">
 				${avatar(me.display_name, me.id, "xl")}
 				<div class="grow">
@@ -1392,151 +1407,157 @@ async function viewAdmin() {
 		</div>`;
 
 	return [
-		html`<div class="page-narrow">
-			${backLink("#/", t("event.back"))} ${pageHead(t("admin.title"), tn("admin.count", users.length))}
+		html`<div class="page-narrow page-admin">
+			${backLink("#/", t("event.back"))} ${pageHead("shield", t("admin.title"), t("admin.subtitle"))}
+			<div class="admin-layout">
+				<section class="admin-users" aria-labelledby="admin-users-title">
+					<h2 class="section-title" id="admin-users-title">
+						${icon("users")}${t("admin.users")}<span class="section-count">${users.length}</span>
+					</h2>
 
-			<details class="card disclosure" ${users.length <= 1 && "open"}>
-				<summary>${icon("userPlus")}<span>${t("admin.create")}</span>${icon("chevronDown", "chev")}</summary>
-				<form class="disclosure-body" data-submit="create" data-reset-on-success autocomplete="off">
-					<div class="field-grid">
-						<label class="field">
-							<span>${t("admin.name")}</span>
-							<input name="display_name" required maxlength="60" />
-						</label>
-						<label class="field">
-							<span>${t("login.email")}</span>
-							<input name="email" type="email" inputmode="email" required />
-						</label>
-						<div class="field">
-							<label for="new-password">${t("admin.password")}</label>
-							<div class="input-group">
-								<input
-									id="new-password"
-									data-generate-on-success
-									name="password"
-									required
-									minlength="8"
-									value="${randomPassword()}"
-									autocomplete="new-password"
-									spellcheck="false"
-								/>
-								<button
-									type="button"
-									class="btn-icon"
-									data-action="generate"
-									title="${t("admin.generate")}"
-									aria-label="${t("admin.generate")}"
-								>
-									${icon("refresh")}
-								</button>
-							</div>
-						</div>
-					</div>
-					<fieldset class="field">
-						<legend>${t("groups.title")}</legend>
-						${groupChecks(() => groups.length === 1)}
-					</fieldset>
-					<label class="check">
-						<input name="is_admin" type="checkbox" />
-						<span>${t("admin.makeAdmin")}</span>
-					</label>
-					<div class="form-actions">
-						<button class="btn btn-primary">${icon("userPlus")}${t("admin.add")}</button>
-					</div>
-				</form>
-			</details>
-
-			<ul class="user-list">
-				${users.map(
-					(u) =>
-						html`<li class="card user-row">
-							${avatar(u.display_name, u.id, "lg")}
-							<div class="grow">
-								<strong>${u.display_name ?? "—"}</strong>
-								${u.id === me.id && html`<span class="muted">(${t("common.you")})</span>`}
-								<div class="muted small truncate">${u.email}</div>
-								<div class="muted small truncate">${groupNames(u.id)}</div>
-							</div>
-							<div class="row-actions">
-								<label class="switch">
-									<input
-										type="checkbox"
-										data-action="toggleAdmin"
-										data-id="${u.id}"
-										${u.is_admin && "checked"}
-										${u.id === me.id && "disabled"}
-									/>
-									<span>${t("admin.isAdmin")}</span>
+					<details class="card disclosure" ${users.length <= 1 && "open"}>
+						<summary>${icon("userPlus")}<span>${t("admin.create")}</span>${icon("chevronDown", "chev")}</summary>
+						<form class="disclosure-body" data-submit="create" data-reset-on-success autocomplete="off">
+							<div class="field-grid">
+								<label class="field">
+									<span>${t("admin.name")}</span>
+									<input name="display_name" required maxlength="60" />
 								</label>
-								<button
-									class="btn-icon"
-									data-action="editGroups"
-									data-id="${u.id}"
-									data-name="${u.display_name}"
-									title="${t("groups.edit")}"
-									aria-label="${t("groups.edit")}"
-								>
-									${icon("layers")}
-								</button>
-								<button
-									class="btn-icon"
-									data-action="resetPassword"
-									data-id="${u.id}"
-									data-name="${u.display_name}"
-									title="${t("admin.resetPassword")}"
-									aria-label="${t("admin.resetPassword")}"
-								>
-									${icon("key")}
-								</button>
-								${u.id === me.id
-									? html`<span class="btn-icon" aria-hidden="true"></span>`
-									: deleteButton("deleteUser", u.id, u.display_name)}
+								<label class="field">
+									<span>${t("login.email")}</span>
+									<input name="email" type="email" inputmode="email" required />
+								</label>
+								<div class="field">
+									<label for="new-password">${t("admin.password")}</label>
+									<div class="input-group">
+										<input
+											id="new-password"
+											data-generate-on-success
+											name="password"
+											required
+											minlength="8"
+											value="${randomPassword()}"
+											autocomplete="new-password"
+											spellcheck="false"
+										/>
+										<button
+											type="button"
+											class="btn-icon"
+											data-action="generate"
+											title="${t("admin.generate")}"
+											aria-label="${t("admin.generate")}"
+										>
+											${icon("refresh")}
+										</button>
+									</div>
+								</div>
 							</div>
-						</li>`,
-				)}
-			</ul>
+							<fieldset class="field">
+								<legend>${t("groups.title")}</legend>
+								${groupChecks(() => groups.length === 1)}
+							</fieldset>
+							<label class="check">
+								<input name="is_admin" type="checkbox" />
+								<span>${t("admin.makeAdmin")}</span>
+							</label>
+							<div class="form-actions">
+								<button class="btn btn-primary">${icon("userPlus")}${t("admin.add")}</button>
+							</div>
+						</form>
+					</details>
 
-			<section class="card panel">
-				${cardHead("layers", t("groups.title"))}
-				${groups.length
-					? html`<ul class="rows">
-							${groups.map(
-								(g) =>
-									html`<li class="row">
-										<div class="grow">
-											<strong>${g.name}</strong>
-											<div class="muted small">${tn("audience.members", g.members.length)}</div>
-										</div>
-										<div class="row-actions">
-											<button
-												class="btn btn-sm btn-ghost"
-												data-action="renameGroup"
-												data-id="${g.id}"
-												data-name="${g.name}"
-											>
-												${icon("edit")}${t("groups.rename")}
-											</button>
-											${deleteButton("deleteGroup", g.id, g.name)}
-										</div>
-									</li>`,
-							)}
-						</ul>`
-					: html`<p class="empty-inline">${t("groups.empty")}</p>`}
-				<form class="add-form single" data-submit="createGroup" data-reset-on-success>
-					<label class="field">
-						<input
-							name="name"
-							required
-							maxlength="60"
-							placeholder="${t("groups.namePlaceholder")}"
-							aria-label="${t("groups.name")}"
-						/>
-					</label>
-					<button class="btn" aria-label="${t("groups.add")}">
-						${icon("plus")}<span class="hide-xs">${t("groups.add")}</span>
-					</button>
-				</form>
-			</section>
+					<ul class="user-list">
+						${users.map(
+							(u) =>
+								html`<li class="card user-row">
+									${avatar(u.display_name, u.id, "lg")}
+									<div class="grow">
+										<strong>${u.display_name ?? "—"}</strong>
+										${u.id === me.id && html`<span class="muted">(${t("common.you")})</span>`}
+										<div class="muted small truncate">${u.email}</div>
+										<div class="muted small truncate">${groupNames(u.id)}</div>
+									</div>
+									<div class="row-actions">
+										<label class="switch">
+											<input
+												type="checkbox"
+												data-action="toggleAdmin"
+												data-id="${u.id}"
+												${u.is_admin && "checked"}
+												${u.id === me.id && "disabled"}
+											/>
+											<span>${t("admin.isAdmin")}</span>
+										</label>
+										<button
+											class="btn-icon"
+											data-action="editGroups"
+											data-id="${u.id}"
+											data-name="${u.display_name}"
+											title="${t("groups.edit")}"
+											aria-label="${t("groups.edit")}"
+										>
+											${icon("layers")}
+										</button>
+										<button
+											class="btn-icon"
+											data-action="resetPassword"
+											data-id="${u.id}"
+											data-name="${u.display_name}"
+											title="${t("admin.resetPassword")}"
+											aria-label="${t("admin.resetPassword")}"
+										>
+											${icon("key")}
+										</button>
+										${u.id === me.id
+											? html`<span class="btn-icon" aria-hidden="true"></span>`
+											: deleteButton("deleteUser", u.id, u.display_name)}
+									</div>
+								</li>`,
+						)}
+					</ul>
+				</section>
+				<section class="card panel admin-groups">
+					${cardHead("layers", t("groups.title"), t("groups.manageHint"))}
+					${groups.length
+						? html`<ul class="rows">
+								${groups.map(
+									(g) =>
+										html`<li class="row">
+											<div class="grow">
+												<strong>${g.name}</strong>
+												<div class="muted small">${tn("audience.members", g.members.length)}</div>
+											</div>
+											<div class="row-actions">
+												<button
+													class="btn btn-sm btn-ghost"
+													data-action="renameGroup"
+													data-id="${g.id}"
+													data-name="${g.name}"
+												>
+													${icon("edit")}${t("groups.rename")}
+												</button>
+												${deleteButton("deleteGroup", g.id, g.name)}
+											</div>
+										</li>`,
+								)}
+							</ul>`
+						: html`<p class="empty-inline">${t("groups.empty")}</p>`}
+					<form class="add-form single" data-submit="createGroup" data-reset-on-success>
+						<label class="field">
+							<input
+								name="name"
+								required
+								maxlength="60"
+								placeholder="${t("groups.namePlaceholder")}"
+								aria-label="${t("groups.name")}"
+							/>
+						</label>
+						<button class="btn" aria-label="${t("groups.add")}">
+							${icon("plus")}<span class="hide-xs">${t("groups.add")}</span>
+						</button>
+					</form>
+				</section>
+			</div>
 		</div>`,
 		{
 			generate: (_, el) => {
@@ -1631,7 +1652,7 @@ async function viewAdmin() {
 				await reload();
 			},
 			renameGroup: async ({ id, name }) => {
-				const input = { label: t("groups.name"), value: name, trim: true };
+				const input = { label: t("groups.name"), value: name, trim: true, maxlength: 60 };
 				const value = await ask({ title: t("groups.renameTitle", { name }), input, confirm: t("common.save") });
 				if (!value || !current() || value === name) return;
 				await api.saveGroup(id, value).catch((err) => {

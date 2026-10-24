@@ -2,6 +2,18 @@ const { test, expect, eventPath } = require("./fixtures.cjs");
 
 const fitsViewport = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
+test("the administration shield renders in the menu and page heading", async ({ page }) => {
+	await page.goto("/#/admin");
+	const headingIcon = page.locator(".page-admin h1 .icon");
+	await expect(headingIcon).toBeVisible();
+	await expect.poll(() => headingIcon.evaluate((icon) => icon.getBBox().width)).toBeGreaterThan(0);
+	await page.locator(".menu-trigger").click();
+	const menuIcon = page.locator('.menu-panel [href="#/admin"] .icon');
+	await expect(menuIcon).toBeVisible();
+	await expect(menuIcon.locator("use")).toHaveAttribute("href", /#shield$/);
+	await expect.poll(() => menuIcon.evaluate((icon) => icon.getBBox().width)).toBeGreaterThan(0);
+});
+
 for (const width of [320, 390, 900, 1280]) {
 	test(`badges, avatars and long names stay inside the layout at ${width}px`, async ({ page }) => {
 		await page.setViewportSize({ width, height: 850 });
