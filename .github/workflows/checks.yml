@@ -1,0 +1,50 @@
+name: Checks
+
+on:
+    pull_request:
+    workflow_call:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    tests:
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:17-alpine
+                env:
+                    POSTGRES_PASSWORD: events-test
+                    POSTGRES_DB: events_test
+                ports: [5432:5432]
+                options: >-
+                    --health-cmd "pg_isready -U postgres"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+            - run: npm ci
+            - run: npm run lint
+            - run: npm test
+            - run: npx playwright install --with-deps chromium
+            - run: npm run test:ui
+            - name: Install PostgreSQL client
+              run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+            - name: Test all migrations and RLS
+              env:
+                  PGHOST: localhost
+                  PGUSER: postgres
+                  PGPASSWORD: events-test
+                  PGDATABASE: events_test
+              run: npm run test:db
+            - uses: denoland/setup-deno@v2
+              with:
+                  deno-version: v2.x
+            - name: Check Edge Functions
+              run: deno check --no-lock --node-modules-dir=none supabase/functions/calendar/index.ts supabase/functions/admin-users/index.ts

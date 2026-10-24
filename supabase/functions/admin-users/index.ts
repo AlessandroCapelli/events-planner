@@ -32,7 +32,10 @@ Deno.serve(async (req) => {
 	try {
 		const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? '';
 		if (!token) return json({ error: 'Unauthorized' }, 401);
-		const { data: { user }, error: authError } = await db.auth.getUser(token);
+		const {
+			data: { user },
+			error: authError,
+		} = await db.auth.getUser(token);
 		if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 		const caller = await must(db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle());
 		if (!caller?.is_admin) return json({ error: 'Forbidden' }, 403);
@@ -49,8 +52,14 @@ Deno.serve(async (req) => {
 					users.push(...batch.users);
 				}
 				const profiles: { id: string; display_name: string; is_admin: boolean }[] = [];
-				for (; ;) {
-					const batch = await must(db.from('profiles').select('id, display_name, is_admin').order('id').range(profiles.length, profiles.length + 199));
+				for (;;) {
+					const batch = await must(
+						db
+							.from('profiles')
+							.select('id, display_name, is_admin')
+							.order('id')
+							.range(profiles.length, profiles.length + 199),
+					);
 					if (!batch?.length) break;
 					profiles.push(...batch);
 				}
@@ -63,7 +72,13 @@ Deno.serve(async (req) => {
 			}
 			case 'create': {
 				const { user: created } = await must(
-					db.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { display_name }, app_metadata: { initial_admin: is_admin === true } }),
+					db.auth.admin.createUser({
+						email,
+						password,
+						email_confirm: true,
+						user_metadata: { display_name },
+						app_metadata: { initial_admin: is_admin === true },
+					}),
 				);
 				if (!created) throw new Error('User creation returned no user');
 				return json({ id: created.id });

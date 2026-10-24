@@ -10,8 +10,26 @@ type FeedEvent = {
 };
 
 const TEXT = {
-	it: { name: 'Events Planner', time: 'Data e ora', reply: 'La tua risposta', none: 'Non hai ancora risposto', yes: 'Ci sono', maybe: 'Forse', no: 'Non ci sono', open: 'Apri' },
-	en: { name: 'Events Planner', time: 'Date and time', reply: 'Your reply', none: "You haven't replied yet", yes: "I'm in", maybe: 'Maybe', no: "Can't make it", open: 'Open' },
+	it: {
+		name: 'Events Planner',
+		time: 'Data e ora',
+		reply: 'La tua risposta',
+		none: 'Non hai ancora risposto',
+		yes: 'Ci sono',
+		maybe: 'Forse',
+		no: 'Non ci sono',
+		open: 'Apri',
+	},
+	en: {
+		name: 'Events Planner',
+		time: 'Date and time',
+		reply: 'Your reply',
+		none: "You haven't replied yet",
+		yes: "I'm in",
+		maybe: 'Maybe',
+		no: "Can't make it",
+		open: 'Open',
+	},
 };
 
 /** Escapes a value for an iCalendar TEXT property. */
@@ -35,16 +53,27 @@ function fold(line: string): string {
 
 /** Local date (YYYYMMDD) of an instant in `timeZone`, shifted by `days`. */
 function localDay(iso: string, timeZone: string, days = 0): string {
-	const parts = new Intl.DateTimeFormat('en', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
-		.formatToParts(new Date(iso));
+	const parts = new Intl.DateTimeFormat('en', {
+		timeZone,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+	}).formatToParts(new Date(iso));
 	const part = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-	return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + days)).toISOString().slice(0, 10).replaceAll('-', '');
+	return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + days))
+		.toISOString()
+		.slice(0, 10)
+		.replaceAll('-', '');
 }
 
 /** Builds the iCalendar document, with every event as an all-day entry in `timeZone`. */
 export function buildCalendar(
 	events: FeedEvent[],
-	{ lang = 'it', timeZone = 'Europe/Rome', appUrl = '' }: { lang?: 'it' | 'en'; timeZone?: string; appUrl?: string } = {},
+	{
+		lang = 'it',
+		timeZone = 'Europe/Rome',
+		appUrl = '',
+	}: { lang?: 'it' | 'en'; timeZone?: string; appUrl?: string } = {},
 ): string {
 	const text = TEXT[lang];
 	const when = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'it-IT', {
@@ -120,9 +149,12 @@ Deno.serve(async (req) => {
 	if (!['GET', 'HEAD'].includes(req.method) || !/^[0-9a-f]{64}$/.test(token)) return notFound();
 
 	const events: FeedEvent[] = [];
-	for (; ;) {
-		const { data, error } = await db.rpc('calendar_feed', { p_token: token })
-			.order('starts_at').order('id').range(events.length, events.length + 199);
+	for (;;) {
+		const { data, error } = await db
+			.rpc('calendar_feed', { p_token: token })
+			.order('starts_at')
+			.order('id')
+			.range(events.length, events.length + 199);
 		if (error) return error.code === 'P0002' ? notFound() : new Response('Error', { status: 500 });
 		if (!data.length) break;
 		events.push(...data);

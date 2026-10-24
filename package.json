@@ -1,0 +1,20 @@
+{
+	"name": "events-planner",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"test": "node --experimental-vm-modules --test tests/*.test.cjs",
+		"test:ui": "playwright test",
+		"test:db": "psql -v ON_ERROR_STOP=1 -f tests/database.sql",
+		"lint": "prettier --check web tests scripts supabase/functions playwright.config.cjs",
+		"format": "prettier --write web tests scripts supabase/functions playwright.config.cjs",
+		"config": "node scripts/generate-config.mjs"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.56.1",
+		"prettier": "3.5.3"
+	}
+}

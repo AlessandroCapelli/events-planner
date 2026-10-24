@@ -1,0 +1,6 @@
+{
+	"useTabs": true,
+	"printWidth": 120,
+	"objectWrap": "collapse",
+	"overrides": [{ "files": "supabase/functions/**/*.ts", "options": { "singleQuote": true } }]
+}

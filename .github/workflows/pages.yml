@@ -27,21 +27,7 @@ jobs:
               env:
                   SUPABASE_URL: ${{ vars.SUPABASE_URL }}
                   SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
-              run: |
-                  python3 - <<'PY'
-                  import json
-                  import os
-                  from pathlib import Path
-                  from urllib.parse import urlparse
-
-                  url = os.environ['SUPABASE_URL'].rstrip('/')
-                  key = os.environ['SUPABASE_ANON_KEY']
-                  parsed = urlparse(url)
-                  if parsed.scheme != 'https' or not parsed.netloc or not key:
-                      raise SystemExit('SUPABASE_URL and SUPABASE_ANON_KEY must be configured')
-                  config = {'supabaseUrl': url, 'supabaseAnonKey': key}
-                  Path('web/config.js').write_text('window.CONFIG = ' + json.dumps(config) + ';\n', encoding='utf-8')
-                  PY
+              run: node scripts/generate-config.mjs
 
             - uses: actions/configure-pages@v5
             - uses: actions/upload-pages-artifact@v3

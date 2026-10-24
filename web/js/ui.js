@@ -1,12 +1,6 @@
 import { fmtDate, t } from "./i18n.js";
 
-const ESCAPES = {
-	"&": "&amp;",
-	"<": "&lt;",
-	">": "&gt;",
-	'"': "&quot;",
-	"'": "&#39;",
-};
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
 /** Markup that is already escaped and must be inserted verbatim. */
 class Safe {
@@ -29,8 +23,7 @@ const render = (v) =>
 				: String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 /** Template tag that escapes every interpolated value except nested html`` fragments. */
-export const html = (strings, ...values) =>
-	new Safe(strings.reduce((out, s, i) => out + render(values[i - 1]) + s));
+export const html = (strings, ...values) => new Safe(strings.reduce((out, s, i) => out + render(values[i - 1]) + s));
 
 const isToggle = (el) => el.type === "checkbox" || el.type === "radio";
 
@@ -44,7 +37,9 @@ const keyOf = (el) =>
 const isDirty = (el) =>
 	isToggle(el)
 		? el.checked !== el.defaultChecked
-		: el.value !== el.defaultValue;
+		: el.tagName === "SELECT"
+			? [...el.options].some((option) => option.selected !== option.defaultSelected)
+			: el.value !== el.defaultValue;
 
 /** Captures unsent input, generated passwords, open panels, focus and caret, so a re-render can keep them. */
 function snapshot(root) {
@@ -53,35 +48,26 @@ function snapshot(root) {
 		if (isDirty(el) || el.hasAttribute("data-generate-on-success"))
 			values.set(keyOf(el), isToggle(el) ? el.checked : el.value);
 	const open = [...root.querySelectorAll("details")].map((d) => d.open);
-	const active = root.contains(document.activeElement)
-		? document.activeElement
-		: null;
+	const active = root.contains(document.activeElement) ? document.activeElement : null;
 	const focus = active &&
-		keyOf(active) && {
-			key: keyOf(active),
-			start: active.selectionStart,
-			end: active.selectionEnd,
-		};
+		keyOf(active) && { key: keyOf(active), start: active.selectionStart, end: active.selectionEnd };
 	return { values, focus, open };
 }
 
 /** Reapplies a `snapshot()` to freshly rendered markup. */
 function restore(root, { values, focus, open }) {
 	const details = root.querySelectorAll("details");
-	if (details.length === open.length)
-		details.forEach((d, i) => (d.open = open[i]));
-	for (const el of root.querySelectorAll(
-		"form[data-submit] [name], [data-action]",
-	)) {
+	if (details.length === open.length) details.forEach((d, i) => (d.open = open[i]));
+	for (const el of root.querySelectorAll("form[data-submit] [name], [data-action]")) {
 		const key = keyOf(el);
 		if (values.has(key)) {
 			if (isToggle(el)) el.checked = values.get(key);
-			else el.value = values.get(key);
+			else if (el.tagName !== "SELECT" || [...el.options].some((option) => option.value === values.get(key)))
+				el.value = values.get(key);
 		}
 		if (key && key === focus?.key) {
 			el.focus({ preventScroll: true });
-			if (focus.start != null)
-				el.setSelectionRange?.(focus.start, focus.end);
+			if (focus.start != null) el.setSelectionRange?.(focus.start, focus.end);
 		}
 	}
 }
@@ -97,16 +83,8 @@ export class FieldError extends Error {
 /** User-facing message for network, permission and database constraint errors. */
 export function describeError(err) {
 	const message = err?.message ?? String(err);
-	if (
-		err instanceof TypeError ||
-		/failed to fetch|networkerror|load failed/i.test(message)
-	)
-		return t("error.network");
-	if (
-		err?.code === "42501" ||
-		/row-level security|permission denied/i.test(message)
-	)
-		return t("error.forbidden");
+	if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(message)) return t("error.network");
+	if (err?.code === "42501" || /row-level security|permission denied/i.test(message)) return t("error.forbidden");
 	if (err?.code === "23503") return t("error.gone");
 	if (err?.code === "23505") return t("error.duplicate");
 	return message;
@@ -118,16 +96,11 @@ function invalidMessage(el) {
 	const value = el.value ?? "";
 	if (el.validity.badInput) return t("validation.badInput");
 	if (el.required && !value.trim()) return t("validation.required");
-	if (el.type === "email" && el.validity.typeMismatch)
-		return t("validation.email");
-	if (el.minLength > 0 && value && value.length < el.minLength)
-		return t("validation.tooShort", { n: el.minLength });
-	if (el.maxLength > 0 && value.length > el.maxLength)
-		return t("validation.tooLong", { n: el.maxLength });
-	if (el.min && value && value < el.min)
-		return t("validation.tooEarly", { date: fmtDate(fromInput(el.min)) });
-	if (el.dataset.match && value !== el.form.elements[el.dataset.match].value)
-		return t("validation.mismatch");
+	if (el.type === "email" && el.validity.typeMismatch) return t("validation.email");
+	if (el.minLength > 0 && value && value.length < el.minLength) return t("validation.tooShort", { n: el.minLength });
+	if (el.maxLength > 0 && value.length > el.maxLength) return t("validation.tooLong", { n: el.maxLength });
+	if (el.min && value && value < el.min) return t("validation.tooEarly", { date: fmtDate(fromInput(el.min)) });
+	if (el.dataset.match && value !== el.form.elements[el.dataset.match].value) return t("validation.mismatch");
 	return null;
 }
 
@@ -138,10 +111,7 @@ function showFieldError(el, message) {
 	const box = errorBox(el);
 	let note = box.querySelector(":scope > .field-error");
 	if (!note) {
-		note = Object.assign(document.createElement("p"), {
-			className: "field-error",
-			id: `error-${crypto.randomUUID()}`,
-		});
+		note = Object.assign(document.createElement("p"), { className: "field-error", id: `error-${crypto.randomUUID()}` });
 		box.append(note);
 	}
 	note.innerHTML = html`${icon("alert")}<span>${message}</span>`;
@@ -162,14 +132,11 @@ function clearFieldError(el) {
 function showFormError(form, message) {
 	let note = form.querySelector(":scope > .form-error");
 	if (!note) {
-		note = Object.assign(document.createElement("p"), {
-			className: "form-error",
-		});
+		note = Object.assign(document.createElement("p"), { className: "form-error" });
 		note.setAttribute("role", "alert");
 		const anchor =
 			!form.classList.contains("add-form") &&
-			(form.querySelector(":scope > .form-actions") ??
-				form.querySelector(":scope > button:not([type='button'])"));
+			(form.querySelector(":scope > .form-actions") ?? form.querySelector(":scope > button:not([type='button'])"));
 		if (anchor) anchor.before(note);
 		else form.append(note);
 	}
@@ -178,8 +145,7 @@ function showFormError(form, message) {
 }
 
 function clearErrors(form) {
-	for (const el of form.querySelectorAll("[aria-invalid]"))
-		clearFieldError(el);
+	for (const el of form.querySelectorAll("[aria-invalid]")) clearFieldError(el);
 	const note = form.querySelector(":scope > .form-error");
 	if (note) note.hidden = true;
 }
@@ -212,11 +178,7 @@ function reportFormError(form, err) {
 function submittedFields(form) {
 	return [...form.elements]
 		.filter((el) => el.name && !el.disabled)
-		.map((el) => ({
-			el,
-			value: el.value,
-			checked: el.checked,
-		}));
+		.map((el) => ({ el, value: el.value, checked: el.checked }));
 }
 
 /**
@@ -233,11 +195,7 @@ function finishForm(form, fields) {
 			el.checked = current === checked ? next : current;
 		} else {
 			const current = el.value;
-			const next = reset
-				? el.hasAttribute("data-generate-on-success")
-					? randomPassword()
-					: el.defaultValue
-				: value;
+			const next = reset ? (el.hasAttribute("data-generate-on-success") ? randomPassword() : el.defaultValue) : value;
 			el.defaultValue = next;
 			el.value = current === value ? next : current;
 		}
@@ -254,7 +212,8 @@ export function resetMount(root) {
 }
 
 /**
- * Renders `markup` into `root` and wires `[data-action]` clicks and `form[data-submit]` submits to `actions`.
+ * Renders `markup` into `root` and wires `[data-action]` clicks, `[data-change]` changes and `form[data-submit]`
+ * submits to `actions`.
  * One action runs at a time, so double clicks never send concurrent requests; a render that arrives
  * meanwhile is applied when the action ends. Re-rendering the same page keeps unsent input and focus.
  */
@@ -282,9 +241,7 @@ export function mount(root, markup, actions = {}) {
 			if (pending) {
 				mount(root, ...pending);
 				if (state.formError) {
-					const form = [
-						...root.querySelectorAll("form[data-submit]"),
-					].find(
+					const form = [...root.querySelectorAll("form[data-submit]")].find(
 						(el) => el.dataset.submit === state.formError.submit,
 					);
 					if (form) reportFormError(form, state.formError.error);
@@ -296,10 +253,13 @@ export function mount(root, markup, actions = {}) {
 
 	root.innerHTML = markup;
 	root.dataset.page = page;
-	for (const form of root.querySelectorAll("form[data-submit]"))
-		form.noValidate = true;
+	for (const form of root.querySelectorAll("form[data-submit]")) form.noValidate = true;
 	if (kept) restore(root, kept);
 	root.oninput = (e) => e.target.form && clearFieldError(e.target);
+	root.onchange = (e) => {
+		const fn = actions[e.target.dataset.change];
+		if (fn && !state.busy) run(() => fn(e.target.dataset, e.target));
+	};
 	root.onclick = (e) => {
 		const el = e.target.closest("[data-action]");
 		const fn = el && actions[el.dataset.action];
@@ -354,7 +314,7 @@ export function notify(message, isError = false) {
 /**
  * Opens the modal dialog. Resolves to true, or the input value, when confirmed and to null otherwise.
  * `body` is an html`` fragment whose `[data-handler]` elements call `handlers[name](el, dialog)`;
- * `[data-copy]` buttons copy their value to the clipboard.
+ * `[data-copy]` buttons copy their value to the clipboard. `check(form)` may return a message that blocks confirming.
  */
 export function ask({
 	title,
@@ -365,6 +325,7 @@ export function ask({
 	cancel = t("common.cancel"),
 	danger = false,
 	handlers = {},
+	check,
 }) {
 	const dialog = document.getElementById("dialog");
 	if (dialog.open) return Promise.resolve(null);
@@ -399,16 +360,8 @@ export function ask({
 			</div>
 		</div>`}
 		<div class="dialog-actions">
-			${cancel &&
-			html`<button class="btn btn-ghost" value="cancel">
-				${cancel}
-			</button>`}
-			<button
-				class="btn ${danger ? "btn-danger-solid" : "btn-primary"}"
-				value="ok"
-			>
-				${confirm}
-			</button>
+			${cancel && html`<button class="btn btn-ghost" value="cancel">${cancel}</button>`}
+			<button class="btn ${danger ? "btn-danger-solid" : "btn-primary"}" value="ok">${confirm}</button>
 		</div>
 	</form>`;
 	dialog.returnValue = "";
@@ -416,7 +369,13 @@ export function ask({
 	form.noValidate = true;
 	form.onsubmit = (e) => {
 		clearErrors(form);
-		if (e.submitter?.value === "ok" && !validate(form)) e.preventDefault();
+		if (e.submitter?.value !== "ok") return;
+		if (!validate(form)) return void e.preventDefault();
+		const message = check?.(form);
+		if (message) {
+			showFormError(form, message);
+			e.preventDefault();
+		}
 	};
 	form.oninput = (e) => clearFieldError(e.target);
 	dialog.showModal();
@@ -425,10 +384,7 @@ export function ask({
 		dialog.onclick = async (e) => {
 			if (e.target === dialog) return dialog.close();
 			const handler = e.target.closest("[data-handler]");
-			if (handler)
-				return guard(() =>
-					handlers[handler.dataset.handler]?.(handler, dialog),
-				);
+			if (handler) return guard(() => handlers[handler.dataset.handler]?.(handler, dialog));
 			if (e.target.closest("[data-generate]")) {
 				dialog.querySelector("#dialog-input").value = randomPassword();
 			}
@@ -463,58 +419,9 @@ export function ask({
 	});
 }
 
-/** Lucide-style icon paths (24×24, stroked). */
-const ICONS = {
-	alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
-	archive:
-		'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
-	lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-	mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-	message: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
-	more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
-	send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
-	share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>',
-	back: '<path d="m15 18-6-6 6-6"/>',
-	bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/>',
-	calendar:
-		'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
-	calendarCheck:
-		'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>',
-	check: '<path d="M20 6 9 17l-5-5"/>',
-	chevronDown: '<path d="m6 9 6 6 6-6"/>',
-	clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-	copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
-	down: '<path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/>',
-	download:
-		'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
-	edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
-	globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
-	help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
-	key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
-	logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
-	minus: '<path d="M5 12h14"/>',
-	package:
-		'<path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>',
-	pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
-	plus: '<path d="M12 5v14M5 12h14"/>',
-	refresh:
-		'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/>',
-	settings:
-		'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
-	trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-	up: '<path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
-	user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-	userPlus:
-		'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
-	users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
-	x: '<path d="M18 6 6 18M6 6l12 12"/>',
-};
-
-/** Inline SVG icon from `ICONS`. */
+/** Icon from the Lucide-style sprite in icons.svg (24×24, stroked). */
 export const icon = (name, cls = "") =>
-	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">
-		${new Safe(ICONS[name])}
-	</svg>`;
+	html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><use href="icons.svg#${name}"></use></svg>`;
 
 /** Well-separated hues, so different people never get near-identical avatars. */
 const AVATAR_HUES = [0, 28, 48, 142, 172, 196, 220, 258, 290, 325];
@@ -532,8 +439,7 @@ export function avatar(name, seed = name, size = "") {
 			.toUpperCase() || "?";
 	// FNV-1a followed by the MurmurHash3 finalizer spreads similar ids evenly across the hues.
 	let hash = 2166136261;
-	for (const c of String(seed))
-		hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+	for (const c of String(seed)) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
 	hash ^= hash >>> 16;
 	hash = Math.imul(hash, 0x85ebca6b);
 	hash ^= hash >>> 13;
@@ -551,19 +457,13 @@ export function avatar(name, seed = name, size = "") {
 /** Random password without look-alike characters (0/O, 1/l/I). */
 export function randomPassword(length = 12) {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-	return Array.from(
-		crypto.getRandomValues(new Uint32Array(length)),
-		(n) => chars[n % chars.length],
-	).join("");
+	return Array.from(crypto.getRandomValues(new Uint32Array(length)), (n) => chars[n % chars.length]).join("");
 }
 
 /** Saves `content` as a file download. */
 export function downloadFile(name, content, type) {
 	const url = URL.createObjectURL(new Blob([content], { type }));
-	Object.assign(document.createElement("a"), {
-		href: url,
-		download: name,
-	}).click();
+	Object.assign(document.createElement("a"), { href: url, download: name }).click();
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
