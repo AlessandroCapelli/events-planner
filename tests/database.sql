@@ -153,7 +153,7 @@ insert into public.events (id, group_id, title, starts_at, created_by) values
 insert into public.responses (event_id, user_id, status) values
  ('10000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000003', 'yes');
 insert into public.votes (proposal_id, user_id, value) values
- ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003', 1);
+ ('20000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', 1);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
@@ -207,6 +207,14 @@ do $$ begin
 end $$;
 
 set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+select set_config('test.hiking', public.save_group(null, 'Hiking')::text, true);
+reset role;
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+ ('00000000-0000-4000-8000-000000000007', 'hiker@example.test', '{"display_name":"Hiker"}',
+  jsonb_build_object('initial_groups', jsonb_build_array(current_setting('test.hiking'))));
+
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
 select set_config('test.poll', public.create_poll('10000000-0000-4000-8000-000000000001', 'Pizza or sushi?', false, array['Pizza', 'Sushi', ' Pizza '])::text, true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000004', true);
@@ -219,7 +227,7 @@ do $$ declare options uuid[] := array(select id from public.poll_options where p
   exception when sqlstate '22023' then null;
   end;
 end $$;
-select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000006', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000007', true);
 do $$ begin
   if exists (select 1 from public.polls) then raise exception 'Polls of another group are visible'; end if;
 end $$;
